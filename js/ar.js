@@ -10,11 +10,11 @@
 // Dragging the picture nudges the correction (the gesture code moves S.view;
 // the difference is taken up here), pinching changes the lens's focal length.
 
-import { buildPano, chainCrests } from '../core/terrain.js?v=1116.1309-f833c0b';
-import { Camera, matMul, yawMat, pitchRollMat, orthonormalize, yprFromRot, IDENT } from '../core/camera.js?v=1116.1309-f833c0b';
-import { analyzeFrame, alignModel, solveAlignment } from '../core/align.js?v=1116.1309-f833c0b';
-import { startCamera, Orientation } from '../core/sensors.js?v=1116.1309-f833c0b';
-import { declination } from '../core/geomag.js?v=1116.1309-f833c0b';
+import { buildPano, chainCrests } from '../core/terrain.js?v=1116.1400-424dc31';
+import { Camera, matMul, yawMat, pitchRollMat, orthonormalize, yprFromRot, IDENT } from '../core/camera.js?v=1116.1400-424dc31';
+import { analyzeFrame, alignModel, solveAlignment } from '../core/align.js?v=1116.1400-424dc31';
+import { startCamera, Orientation } from '../core/sensors.js?v=1116.1400-424dc31';
+import { declination } from '../core/geomag.js?v=1116.1400-424dc31';
 
 const DEFAULT_HFOV = 64;          // phone main camera, video mode, along the long side of the frame
 const ZOOMS = [1, 0.6, 1.65];     // focal guesses while the lens is unknown: main, ultra-wide, tele

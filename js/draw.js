@@ -1,11 +1,11 @@
 // draw.js -- everything painted on the canvas (PLAN 7.2, 7.3). All sizes are device pixels.
-import { skyTAt } from './horizon.js?v=1116.1309-f833c0b';
-import { drawPeaks } from './peaks.js?v=1116.1309-f833c0b';
-import { screenCamera, cameraGeometry } from './view.js?v=1116.1309-f833c0b';
-import { format as tzFormat } from './tz.js?v=1116.1309-f833c0b';
-import { TAU, D2R } from '../core/terrain.js?v=1116.1309-f833c0b';
-import { Camera } from '../core/camera.js?v=1116.1309-f833c0b';
-import { art, milkyWayLayer, northTurn } from './skyart.js?v=1116.1309-f833c0b';
+import { skyTAt } from './horizon.js?v=1116.1400-424dc31';
+import { drawPeaks } from './peaks.js?v=1116.1400-424dc31';
+import { screenCamera, cameraGeometry } from './view.js?v=1116.1400-424dc31';
+import { format as tzFormat } from './tz.js?v=1116.1400-424dc31';
+import { TAU, D2R } from '../core/terrain.js?v=1116.1400-424dc31';
+import { Camera } from '../core/camera.js?v=1116.1400-424dc31';
+import { art, milkyWayLayer, northTurn } from './skyart.js?v=1116.1400-424dc31';
 
 const clamp01 = x => Math.min(1, Math.max(0, x));
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -187,7 +187,8 @@ function drawSky(ctx, S, cam, sw, sh, k, alpha) {
     // the unlit part: the same disc, faint, so it melts into the sky without vanishing
     ctx.globalAlpha = alpha * (0.1 + 0.12 * night);
     if (pic) {
-      ctx.save(); ctx.rotate(-theta + (up ? northTurn(up[0], up[1]) : 0));
+      ctx.save(); ctx.beginPath(); ctx.arc(0, 0, rr, 0, TAU); ctx.clip();
+      ctx.rotate(-theta + (up ? northTurn(up[0], up[1]) : 0));
       ctx.drawImage(pic, -rr * 1.004, -rr * 1.004, rr * 2.008, rr * 2.008);
       ctx.restore();
     } else { ctx.fillStyle = '#c9ccd2'; ctx.beginPath(); ctx.arc(0, 0, rr, 0, TAU); ctx.fill(); }

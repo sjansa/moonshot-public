@@ -1,19 +1,19 @@
 // main.js -- state, wiring, readouts, URL state, startup. The menu (menu.js) gets the functions it needs through initMenu().
-import { observer, sunMoon, altAz, path, Body, milkyWay, milkyWayAt, nightSky, enu } from './astro.js?v=1116.1309-f833c0b';
-import { loadSkyArt } from './skyart.js?v=1116.1309-f833c0b';
-import * as TZ from './tz.js?v=1116.1309-f833c0b';
-import { Ruler } from './ruler.js?v=1116.1309-f833c0b';
-import { makeHorizon, terrainEvents, hidden } from './horizon.js?v=1116.1309-f833c0b';
-import { DEMO, demoTerrain } from './demo.js?v=1116.1309-f833c0b';
-import { draw } from './draw.js?v=1116.1309-f833c0b';
-import { clampView, attachGestures } from './view.js?v=1116.1309-f833c0b';
-import { SENSORS } from './optics.js?v=1116.1309-f833c0b';
-import { listPlaces, openPlace, getLastPlaceId, setLastPlaceId, loadPeaks } from './places.js?v=1116.1309-f833c0b';
-import { visiblePeaks } from './peaks.js?v=1116.1309-f833c0b';
-import { initMenu } from './menu.js?v=1116.1309-f833c0b';
-import { tick } from './haptic.js?v=1116.1309-f833c0b';
-import { AR } from './ar.js?v=1116.1309-f833c0b';
-import { whereAmI } from './places.js?v=1116.1309-f833c0b';
+import { observer, sunMoon, altAz, path, Body, milkyWay, milkyWayAt, nightSky, enu } from './astro.js?v=1116.1400-424dc31';
+import { loadSkyArt } from './skyart.js?v=1116.1400-424dc31';
+import * as TZ from './tz.js?v=1116.1400-424dc31';
+import { Ruler } from './ruler.js?v=1116.1400-424dc31';
+import { makeHorizon, terrainEvents, hidden } from './horizon.js?v=1116.1400-424dc31';
+import { DEMO, demoTerrain } from './demo.js?v=1116.1400-424dc31';
+import { draw } from './draw.js?v=1116.1400-424dc31';
+import { clampView, attachGestures } from './view.js?v=1116.1400-424dc31';
+import { SENSORS } from './optics.js?v=1116.1400-424dc31';
+import { listPlaces, openPlace, getLastPlaceId, setLastPlaceId, loadPeaks } from './places.js?v=1116.1400-424dc31';
+import { visiblePeaks } from './peaks.js?v=1116.1400-424dc31';
+import { initMenu } from './menu.js?v=1116.1400-424dc31';
+import { tick } from './haptic.js?v=1116.1400-424dc31';
+import { AR } from './ar.js?v=1116.1400-424dc31';
+import { whereAmI } from './places.js?v=1116.1400-424dc31';
 
 const R2D = 180 / Math.PI;
 
@@ -133,7 +133,7 @@ function rulerMarks(from, to) {
 /** Move to a time. Positions and the Milky Way are recomputed every call. */
 export function setTime(date) {
   S.date = date instanceof Date ? date : new Date(date);
-  if (ruler && ruler.time.getTime() !== Math.round(S.date.getTime() / 60000) * 60000) ruler.setTime(S.date);
+  if (ruler && ruler.time.getTime() !== Math.round(S.date.getTime() / 1000) * 1000) ruler.setTime(S.date);
   if (!S.obs) return;
   S.sm = sunMoon(S.date, S.obs);
   S.mwNow = milkyWayAt(S.mw, S.date, S.obs);
@@ -187,7 +187,7 @@ export function applyPlan(plan) {
   S.subject = { az, alt, dir: enu(az, alt), body: plan.body, kind: plan.kind };
   S.show[plan.body === 'gc' ? 'milkyWay' : plan.body] = true;
   ruler.setSpan(2 * 3600e3);
-  setTime(new Date(Math.round(+plan.time / 60000) * 60000));
+  setTime(new Date(Math.round(+plan.time / 1000) * 1000));
   setView({ azDeg: plan.azDeg, altDeg: plan.altDeg, hfovDeg: S.camera.on ? undefined : Math.min(S.view.hfovDeg, 25) });
   changed();
 }

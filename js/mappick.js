@@ -5,13 +5,13 @@
 // A native picker can replace Leaflet: if the Capacitor 'SpotPicker' plugin exists it is used
 // (not in solver mode).
 
-import { whereAmI } from './places.js?v=1116.1309-f833c0b';
-import * as astro from './astro.js?v=1116.1309-f833c0b';
-import * as TZ from './tz.js?v=1116.1309-f833c0b';
-import { tick } from './haptic.js?v=1116.1309-f833c0b';
-import { makeSkyGlyph } from './skyglyph.js?v=1116.1309-f833c0b';
-import { fetchElevGrid } from './elev.js?v=1116.1309-f833c0b';
-import { bodyTrack, solveGrid, solveSpot, elevAt, lonLatToPx, pxToLonLat } from './solver.js?v=1116.1309-f833c0b';
+import { whereAmI } from './places.js?v=1116.1400-424dc31';
+import * as astro from './astro.js?v=1116.1400-424dc31';
+import * as TZ from './tz.js?v=1116.1400-424dc31';
+import { tick } from './haptic.js?v=1116.1400-424dc31';
+import { makeSkyGlyph } from './skyglyph.js?v=1116.1400-424dc31';
+import { fetchElevGrid } from './elev.js?v=1116.1400-424dc31';
+import { bodyTrack, solveGrid, solveSpot, elevAt, lonLatToPx, pxToLonLat } from './solver.js?v=1116.1400-424dc31';
 
 const LINE_KM = 20;
 let leafletReady = null;

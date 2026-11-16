@@ -29,6 +29,7 @@ function dtf(key, opts) {
 }
 const O = {
   hm: { hour: '2-digit', minute: '2-digit' },
+  hms: { hour: '2-digit', minute: '2-digit', second: '2-digit' },
   h: { hour: '2-digit' },
   d: { day: 'numeric' },
   date: { weekday: 'short', day: 'numeric', month: 'short' },
@@ -42,9 +43,10 @@ function parts(d, key) {
   return o;
 }
 
-/** what: 'time' HH:MM (24 h), 'hour' HH, 'day' day number, 'date' "Wed 25 Nov". */
+/** what: 'time' HH:MM (24 h), 'timeS' HH:MM:SS, 'hour' HH, 'day' day number, 'date' "Wed 25 Nov". */
 export function format(d, what = 'time') {
   if (what === 'time') { const p = parts(d, 'hm'); return `${p.hour}:${p.minute}`; }
+  if (what === 'timeS') { const p = parts(d, 'hms'); return `${p.hour}:${p.minute}:${p.second}`; }
   if (what === 'hour') return parts(d, 'h').hour;
   if (what === 'day') return parts(d, 'd').day;
   const p = parts(d, 'date');
@@ -54,8 +56,8 @@ export function format(d, what = 'time') {
 /** Short zone label for display: "UTC", "MST", "GMT+2"... */
 export function zoneName(d) { return parts(d, 'name').timeZoneName || ''; }
 
-/** "Wed 25 Nov 17:30 MST" */
-export function formatFull(d) { return `${format(d, 'date')} ${format(d, 'time')} ${zoneName(d)}`.trim(); }
+/** "Wed 25 Nov 17:30 MST", or "17:30:12" when the time has seconds */
+export function formatFull(d) { return `${format(d, 'date')} ${format(d, d.getTime() % 60000 ? 'timeS' : 'time')} ${zoneName(d)}`.trim(); }
 
 /** yyyy-mm-dd of d in the zone, for <input type="date">. */
 export function dateInputValue(d) { const p = parts(d, 'ymd'); return `${p.year}-${p.month}-${p.day}`; }

@@ -1,22 +1,24 @@
 // Time ruler: a 96 px strip, two rows. Top row: buttons and the time readout (a
 // date button). Below: the sliding scale with a fixed center needle.
 // Fine mode (PhotoPills style): press and hold the scale for 400 ms without moving
-// 8 px and the scale switches to FINE_SPAN (20 min across the width, a tick per
-// minute, labels every 5) while the finger stays down; the gesture continues without
+// 8 px and the scale switches to FINE_SPAN (5 min across the width, a tick every
+// 10 s, labels each minute, time to the second) while the finger stays down; the gesture continues without
 // a jump and the selected span returns on release. The haptic tick is opts.haptic.
 // Only import: skyglyph.js (moon + Milky Way glyph in the readout). See PLAN.md section 8.
 
-import { makeSkyGlyph, drawPhase } from './skyglyph.js?v=1116.1309-f833c0b';
+import { makeSkyGlyph, drawPhase } from './skyglyph.js?v=1116.1400-424dc31';
 
 export const SPANS = [2 * 3600e3, 12 * 3600e3, 3 * 86400e3, 30 * 86400e3];
 const SPAN_LABELS = ['2h', '12h', '3d', '30d'];
-const MIN = 60000;
-export const FINE_SPAN = 20 * MIN;
+const MIN = 60000, SEC = 1000;
+export const FINE_SPAN = 5 * MIN;
+export const FINE_TICK = 10 * SEC;
 const LONG_PRESS_MS = 400, LONG_PRESS_PX = 8;
 
 // ---------- pure time maths (exported for tests) ----------
 
 export const snapMinute = (ms) => Math.round(ms / MIN) * MIN;
+export const snapSecond = (ms) => Math.round(ms / SEC) * SEC;
 const mod = (a, n) => ((a % n) + n) % n;
 
 /** New time (ms, unsnapped) after dragging dxPx pixels. Dragging left (dx<0) moves forward. */
@@ -59,12 +61,6 @@ export function tickMinutes(fromMs, toMs, stepMin, localMinuteOfDay) {
     t += stepMin;
   }
   return out;
-}
-
-/** Fine-span tick style for a local minute of day: a tick every minute, labelled every 5. */
-export function fineTick(localMinute) {
-  const major = localMinute % 5 === 0;
-  return { major, labelled: major };
 }
 
 export function bandColor(alt) {
@@ -198,9 +194,9 @@ export class Ruler {
       d.hist.push({ x: e.clientX, t: now });
       while (d.hist.length > 2 && now - d.hist[0].t > 100) d.hist.shift();
       if (this._lpTimer && Math.hypot(e.clientX - d.sx, e.clientY - d.sy) >= LONG_PRESS_PX) this._clearLP();
-      const prev = snapMinute(this._exact);
+      const prev = Math.floor(+this.time / FINE_TICK);
       this._user(dragTime(d.t0, e.clientX - d.x0, this._curSpan(), this._w || 1), true);
-      if (this._fine && snapMinute(this._exact) !== prev) this.o.haptic?.();
+      if (this._fine && Math.floor(+this.time / FINE_TICK) !== prev) this.o.haptic?.();
     });
     const end = (e) => {
       const d = this._drag;
@@ -239,7 +235,8 @@ export class Ruler {
   }
 
   get span() { return SPANS[this._spanIdx]; }
-  get time() { return new Date(snapMinute(this._exact)); }
+  // to the second after fine mode (or setTime with seconds), else to the minute
+  get time() { return new Date(this._fine || this._sec ? snapSecond(this._exact) : snapMinute(this._exact)); }
 
   _curSpan() { return this._fine ? FINE_SPAN : SPANS[this._spanIdx]; }
   _cacheIdx() { return this._fine ? SPANS.length : this._spanIdx; }
@@ -272,6 +269,7 @@ export class Ruler {
 
   _leaveFine() {
     if (!this._fine) return;
+    this._exact = snapSecond(this._exact); this._sec = true;     // keep the second that was picked
     this._fine = false;
     const d = this._drag;
     if (d) { d.x0 = d.lx; d.t0 = this._exact; }
@@ -280,7 +278,8 @@ export class Ruler {
   }
 
   setTime(date) {
-    this._exact = snapMinute(date.getTime());
+    this._exact = snapSecond(date.getTime());
+    this._sec = this._exact % MIN !== 0;
     this._syncDate();
     this._schedule();
   }
@@ -309,10 +308,11 @@ export class Ruler {
   // ----- internals -----
 
   _user(ms, fromDrag) {
-    const prev = snapMinute(this._exact);
+    const prev = +this.time;
+    if (!this._fine) this._sec = false;            // outside fine mode the scale works in whole minutes
     this._exact = fromDrag ? ms : snapMinute(ms);
     // drag keeps the unsnapped value so the gesture stays exact; the visible time is snapped
-    const now = snapMinute(this._exact);
+    const now = +this.time;
     this._syncDate();
     this._schedule();
     if (now !== prev || !fromDrag) this.o.onChange && this.o.onChange(new Date(now));
@@ -342,7 +342,7 @@ export class Ruler {
       if (v && this.dateIn.value !== v) this.dateIn.value = v;
       if (this.o.sky && v !== this._skyDay) { this._skyDay = v; const d = this.o.sky(this.time); this.glyph.update(d, { south: !!(d && d.south) }); }
     } catch (e) { /* ignore */ }
-    const ds = this.o.format(this.time, 'date'), ts = this.o.format(this.time, 'time');
+    const ds = this.o.format(this.time, 'date'), ts = this.o.format(this.time, this._fine || this._sec ? 'timeS' : 'time');
     this.rd.textContent = ds; this.rt.textContent = ts;
     this.cv.setAttribute('aria-valuetext', ds + ' ' + ts);
   }
@@ -379,10 +379,10 @@ export class Ruler {
   _ticks(t0, t1) {
     const fmt = this.o.format;
     const out = [];
-    if (this._fine) {
-      for (const em of tickMinutes(t0, t1, 1, (m) => this._localMinute(m))) {
-        const ft = fineTick(this._localMinute(em));
-        out.push({ ms: em * MIN, major: ft.major, label: ft.labelled ? fmt(new Date(em * MIN), 'time') : null, bold: false });
+    if (this._fine) {                                // every 10 s, a long tick and a label on each minute
+      for (let ms = Math.ceil(t0 / FINE_TICK) * FINE_TICK; ms <= t1; ms += FINE_TICK) {
+        const major = ms % MIN === 0;
+        out.push({ ms, major, label: major ? fmt(new Date(ms), 'time') : null, bold: false });
       }
       return out;
     }
@@ -409,7 +409,7 @@ export class Ruler {
   _draw() {
     const ctx = this.ctx, W = this._w, H = this._h, dpr = this._dpr;
     if (!W) return;
-    const t = snapMinute(this._exact), span = this._curSpan();
+    const t = +this.time, span = this._curSpan();
     this._ensureCaches(t);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
