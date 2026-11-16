@@ -1,10 +1,16 @@
 // Time ruler: a 96 px strip, two rows. Top row: buttons and the time readout (a
 // date button). Below: the sliding scale with a fixed center needle.
+// Fine mode (PhotoPills style): press and hold the scale for 400 ms without moving
+// 8 px and the scale switches to FINE_SPAN (20 min across the width, a tick per
+// minute, labels every 5) while the finger stays down; the gesture continues without
+// a jump and the selected span returns on release. The haptic tick is opts.haptic.
 // No imports. See PLAN.md section 8.
 
 export const SPANS = [2 * 3600e3, 12 * 3600e3, 3 * 86400e3, 30 * 86400e3];
 const SPAN_LABELS = ['2h', '12h', '3d', '30d'];
 const MIN = 60000;
+export const FINE_SPAN = 20 * MIN;
+const LONG_PRESS_MS = 400, LONG_PRESS_PX = 8;
 
 // ---------- pure time maths (exported for tests) ----------
 
@@ -41,6 +47,12 @@ export function tickMinutes(fromMs, toMs, stepMin, localMinuteOfDay) {
     t += stepMin;
   }
   return out;
+}
+
+/** Fine-span tick style for a local minute of day: a tick every minute, labelled every 5. */
+export function fineTick(localMinute) {
+  const major = localMinute % 5 === 0;
+  return { major, labelled: major };
 }
 
 export function bandColor(alt) {
@@ -103,6 +115,8 @@ export class Ruler {
     this._w = 0; this._h = 96; this._dpr = 1;
     this._drag = null;
     this._rep = null;
+    this._fine = false;
+    this._lpTimer = 0;
 
     container.classList.add('rl-root');
     container.textContent = '';
@@ -149,19 +163,31 @@ export class Ruler {
     const cv = this.cv;
     cv.addEventListener('pointerdown', (e) => {
       if (e.button != null && e.button > 0) return;
+      if (this._drag && this._drag.id !== e.pointerId) {   // second pointer: no long press, no fine mode
+        this._clearLP(); this._leaveFine(); this._drag.noLong = true;
+        return;
+      }
       cv.focus({ preventScroll: true });
       try { cv.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
-      this._drag = { id: e.pointerId, x0: e.clientX, t0: this._exact };
+      this._drag = { id: e.pointerId, x0: e.clientX, t0: this._exact, sx: e.clientX, sy: e.clientY, lx: e.clientX };
+      this._lpTimer = setTimeout(() => this._enterFine(), LONG_PRESS_MS);
       e.preventDefault();
     });
     cv.addEventListener('pointermove', (e) => {
       const d = this._drag;
       if (!d || d.id !== e.pointerId) return;
-      this._user(dragTime(d.t0, e.clientX - d.x0, this.span, this._w || 1), true);
+      d.lx = e.clientX;
+      if (this._lpTimer && Math.hypot(e.clientX - d.sx, e.clientY - d.sy) >= LONG_PRESS_PX) this._clearLP();
+      const prev = snapMinute(this._exact);
+      this._user(dragTime(d.t0, e.clientX - d.x0, this._curSpan(), this._w || 1), true);
+      if (this._fine && snapMinute(this._exact) !== prev) this.o.haptic?.();
     });
-    const end = (e) => { if (this._drag && this._drag.id === e.pointerId) this._drag = null; };
+    const end = (e) => {
+      if (this._drag && this._drag.id === e.pointerId) { this._clearLP(); this._leaveFine(); this._drag = null; }
+    };
     cv.addEventListener('pointerup', end);
     cv.addEventListener('pointercancel', end);
+    cv.addEventListener('lostpointercapture', end);
     cv.addEventListener('wheel', (e) => {
       e.preventDefault();
       let d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
@@ -185,6 +211,31 @@ export class Ruler {
 
   get span() { return SPANS[this._spanIdx]; }
   get time() { return new Date(snapMinute(this._exact)); }
+
+  _curSpan() { return this._fine ? FINE_SPAN : SPANS[this._spanIdx]; }
+  _cacheIdx() { return this._fine ? SPANS.length : this._spanIdx; }
+
+  _clearLP() { if (this._lpTimer) { clearTimeout(this._lpTimer); this._lpTimer = 0; } }
+
+  _enterFine() {
+    this._lpTimer = 0;
+    const d = this._drag;
+    if (!d || d.noLong || this._fine) return;
+    this._fine = true;
+    d.x0 = d.lx; d.t0 = this._exact;          // re-anchor: no jump
+    this._bands = null; this._marks = null;
+    this.o.haptic?.();
+    this._schedule();
+  }
+
+  _leaveFine() {
+    if (!this._fine) return;
+    this._fine = false;
+    const d = this._drag;
+    if (d) { d.x0 = d.lx; d.t0 = this._exact; }
+    this._bands = null; this._marks = null;
+    this._schedule();
+  }
 
   setTime(date) {
     this._exact = snapMinute(date.getTime());
@@ -253,22 +304,22 @@ export class Ruler {
     this._raf = requestAnimationFrame(() => { this._raf = 0; this._draw(); });
   }
 
-  _xOf(ms, t) { return this._w / 2 + (ms - t) * this._w / this.span; }
+  _xOf(ms, t) { return this._w / 2 + (ms - t) * this._w / this._curSpan(); }
 
   _ensureCaches(t) {
-    const span = this.span, W = this._w;
-    const stale = (c) => !c || c.spanIdx !== this._spanIdx || Math.abs(t - c.center) > span / 2;
+    const span = this._curSpan(), W = this._w, ci = this._cacheIdx();
+    const stale = (c) => !c || c.spanIdx !== ci || Math.abs(t - c.center) > span / 2;
     if (stale(this._bands)) {
       const step = 8 * span / W;                 // ms per 8 px
       const t0 = t - span, n = Math.ceil(2 * span / step) + 1;
       const alt = new Float32Array(n);
       for (let i = 0; i < n; i++) alt[i] = this.o.sunAltDeg(new Date(t0 + i * step));
-      this._bands = { center: t, spanIdx: this._spanIdx, t0, step, alt };
+      this._bands = { center: t, spanIdx: ci, t0, step, alt };
     }
     if (stale(this._marks)) {
       let list = [];
       try { list = this.o.marks ? this.o.marks(new Date(t - span), new Date(t + span)) || [] : []; } catch (e) { list = []; }
-      this._marks = { center: t, spanIdx: this._spanIdx, list };
+      this._marks = { center: t, spanIdx: ci, list };
     }
   }
 
@@ -278,10 +329,17 @@ export class Ruler {
   }
 
   _ticks(t0, t1) {
-    const idx = this._spanIdx;
-    const step = [5, 60, 360, 1440][idx];
     const fmt = this.o.format;
     const out = [];
+    if (this._fine) {
+      for (const em of tickMinutes(t0, t1, 1, (m) => this._localMinute(m))) {
+        const ft = fineTick(this._localMinute(em));
+        out.push({ ms: em * MIN, major: ft.major, label: ft.labelled ? fmt(new Date(em * MIN), 'time') : null, bold: false });
+      }
+      return out;
+    }
+    const idx = this._spanIdx;
+    const step = [5, 60, 360, 1440][idx];
     for (const em of tickMinutes(t0, t1, step, (m) => this._localMinute(m))) {
       const d = new Date(em * MIN);
       const lm = this._localMinute(em);
@@ -303,7 +361,7 @@ export class Ruler {
   _draw() {
     const ctx = this.ctx, W = this._w, H = this._h, dpr = this._dpr;
     if (!W) return;
-    const t = snapMinute(this._exact), span = this.span;
+    const t = snapMinute(this._exact), span = this._curSpan();
     this._ensureCaches(t);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
@@ -369,5 +427,12 @@ export class Ruler {
     ctx.strokeStyle = getComputedStyle(this.el).getPropertyValue('--go').trim() || '#3fb6ff';
     ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(cx, ROW - 3); ctx.lineTo(cx, H); ctx.stroke();
+    if (this._fine) {
+      ctx.textAlign = 'left'; ctx.font = font(11, 700);
+      ctx.fillStyle = ctx.strokeStyle;
+      ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 3;
+      ctx.fillText('FINE', cx + 6, ROW + 22);
+      ctx.shadowBlur = 0;
+    }
   }
 }

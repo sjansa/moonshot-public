@@ -1,14 +1,15 @@
 // main.js -- state, wiring, readouts, URL state, startup. The menu (menu.js) gets the functions it needs through initMenu().
-import { observer, sunMoon, altAz, path, Body, milkyWay, milkyWayAt } from './astro.js?v=1115.1836-90d6dbb';
-import * as TZ from './tz.js?v=1115.1836-90d6dbb';
-import { Ruler } from './ruler.js?v=1115.1836-90d6dbb';
-import { makeHorizon, terrainEvents, hidden } from './horizon.js?v=1115.1836-90d6dbb';
-import { DEMO, demoTerrain } from './demo.js?v=1115.1836-90d6dbb';
-import { draw } from './draw.js?v=1115.1836-90d6dbb';
-import { clampView, attachGestures } from './view.js?v=1115.1836-90d6dbb';
-import { SENSORS } from './optics.js?v=1115.1836-90d6dbb';
-import { listPlaces, openPlace, getLastPlaceId, setLastPlaceId } from './places.js?v=1115.1836-90d6dbb';
-import { initMenu } from './menu.js?v=1115.1836-90d6dbb';
+import { observer, sunMoon, altAz, path, Body, milkyWay, milkyWayAt } from './astro.js?v=1116.0444-41cdbb4';
+import * as TZ from './tz.js?v=1116.0444-41cdbb4';
+import { Ruler } from './ruler.js?v=1116.0444-41cdbb4';
+import { makeHorizon, terrainEvents, hidden } from './horizon.js?v=1116.0444-41cdbb4';
+import { DEMO, demoTerrain } from './demo.js?v=1116.0444-41cdbb4';
+import { draw } from './draw.js?v=1116.0444-41cdbb4';
+import { clampView, attachGestures } from './view.js?v=1116.0444-41cdbb4';
+import { SENSORS } from './optics.js?v=1116.0444-41cdbb4';
+import { listPlaces, openPlace, getLastPlaceId, setLastPlaceId } from './places.js?v=1116.0444-41cdbb4';
+import { initMenu } from './menu.js?v=1116.0444-41cdbb4';
+import { tick } from './haptic.js?v=1116.0444-41cdbb4';
 
 const R2D = 180 / Math.PI;
 
@@ -186,6 +187,7 @@ export function lookAtMoon() {
 // the time ruler
 let ruler = null;
 ruler = new Ruler($('ruler'), {
+  haptic: tick,
   time: S.date, onChange: d => setTime(d),
   sunAltDeg: d => (S.obs ? altAz(Body.Sun, d, S.obs).alt * R2D : -90),
   marks: rulerMarks, format: TZ.format, dateInputValue: TZ.dateInputValue, dateFromInput: TZ.dateFromInput,
@@ -281,7 +283,7 @@ const num = k => numOr(q.get(k));
 const isDemo = q.has('demo');
 for (const k of (q.get('off') || '').split(',')) if (k in S.show) S.show[k] = false;   // testing: ?off=ridges,scales
 resize();
-const menu = initMenu({ S, setPlace, usePlace, useDemo, setEye, setTime, setTz, setCamera, requestDraw, onChange, invalidate: () => { ruler.invalidate(); updateLines(); requestDraw(); } });
+const menu = initMenu({ S, setPlace, usePlace, useDemo, setEye, setTime, setView, setTz, setCamera, requestDraw, onChange, invalidate: () => { ruler.invalidate(); updateLines(); requestDraw(); } });
 
 async function start() {
   const hash = parseHash();

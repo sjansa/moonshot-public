@@ -72,6 +72,14 @@
   .btn:disabled { opacity: 0.4; }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; }
   .chips button { min-width: 48px; min-height: 44px; border-radius: 12px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.09); font: 600 14px var(--body); padding: 0 8px; }
+  .fread { font: 700 34px/1.1 var(--display); color: var(--text); text-align: center; padding: 4px 0; }
+  .fslide { appearance: none; -webkit-appearance: none; width: 100%; height: 44px; margin: 0; background: transparent; touch-action: none; }
+  .fslide::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; background: var(--line); }
+  .fslide::-moz-range-track { height: 6px; border-radius: 3px; background: var(--line); }
+  .fslide::-webkit-slider-thumb { -webkit-appearance: none; width: 28px; height: 28px; margin-top: -11px; border-radius: 50%; background: var(--go); border: 2px solid #06202e; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5); }
+  .fslide::-moz-range-thumb { width: 24px; height: 24px; border-radius: 50%; background: var(--go); border: 2px solid #06202e; }
+  .fticks { position: relative; height: 18px; margin-top: -6px; }
+  .fticks span { position: absolute; top: 0; left: calc(14px + (100% - 28px) * var(--p)); transform: translateX(-50%); font: 600 11px var(--body); color: var(--dim); }
   select { width: 100%; min-height: 48px; background: rgba(255, 255, 255, 0.09); color: var(--text); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; font: 500 16px var(--body); }
   select option { color: #000; }
   .pane input[type="text"], .pane input[type="number"] { width: 100%; min-height: 44px; background: rgba(255, 255, 255, 0.09); border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; color: var(--text); font: 16px var(--body); }
@@ -135,6 +143,6 @@
   <button class="tog" id="more" data-k="menu" aria-pressed="false" aria-label="Menu"><svg viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>Menu</button>
 </nav>
 
-<script type="module" src="js/main.js?v=1115.1836-90d6dbb"></script>
+<script type="module" src="js/main.js?v=1116.0444-41cdbb4"></script>
 </body>
 </html>

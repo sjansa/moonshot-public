@@ -7,7 +7,18 @@ export const SENSORS = [   // width x height in mm, landscape
   { id: 'one', name: '1 inch', w: 13.2, h: 8.8 },
   { id: 'mf', name: 'Medium format 44x33', w: 43.8, h: 32.9 },
 ];
-export const FOCALS = [14, 20, 24, 35, 50, 85, 135, 200, 300, 400, 600, 800];
+export const FOCALS = [9, 10, 12, 14, 16, 18, 20, 24, 28, 35, 40, 50, 70, 85, 100, 105, 135, 150, 200, 250, 300, 400, 500, 600, 800];
+
+/** Index of the FOCALS stop closest to mm by ratio (log) distance, clamped to the ends. */
+export function nearestFocalIndex(mm) {
+  if (!(mm > 0)) return 0;
+  let best = 0, bd = Infinity;
+  for (let i = 0; i < FOCALS.length; i++) {
+    const d = Math.abs(Math.log(mm / FOCALS[i]));
+    if (d < bd) { bd = d; best = i; }
+  }
+  return best;
+}
 
 /** {w, h} in mm as held. */
 export function frameSize(sensor, portrait) {

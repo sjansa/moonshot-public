@@ -1,9 +1,16 @@
 // mappick.js -- full-screen map sheet to choose a spot.
 //
-// pickSpot() resolves to {lat, lon, name} or null (canceled). A native picker
-// can replace Leaflet: if the Capacitor 'SpotPicker' plugin exists it is used.
+// pickSpot() resolves to {lat, lon, name} or null (canceled). In solver mode with a
+// subject and a valid alignment it is {lat, lon, name, plan: {time, azDeg, altDeg, body, kind, subject}}.
+// A native picker can replace Leaflet: if the Capacitor 'SpotPicker' plugin exists it is used
+// (not in solver mode).
 
-import { whereAmI } from './places.js?v=1115.1836-90d6dbb';
+import { whereAmI } from './places.js?v=1116.0444-41cdbb4';
+import * as astro from './astro.js?v=1116.0444-41cdbb4';
+import * as TZ from './tz.js?v=1116.0444-41cdbb4';
+import { tick } from './haptic.js?v=1116.0444-41cdbb4';
+import { fetchElevGrid } from './elev.js?v=1116.0444-41cdbb4';
+import { bodyTrack, solveGrid, solveSpot, elevAt, lonLatToPx, pxToLonLat } from './solver.js?v=1116.0444-41cdbb4';
 
 const LINE_KM = 20;
 let leafletReady = null;
@@ -38,9 +45,26 @@ const CSS = `
 .mp-msg{min-height:20px;font-size:13px;color:#f0b0a0;margin-bottom:4px}
 .mp-msg.mp-ok{color:#9fb6c3}
 .mp-row{display:flex;gap:8px;align-items:center}
-.mp-pos{flex:1;font-variant-numeric:tabular-nums;font-size:13px;color:#9fb6c3;min-width:0}
+.mp-pos{flex:1;font-variant-numeric:tabular-nums;font-size:13px;color:#9fb6c3;min-width:0;margin-bottom:6px}
 .mp-root .leaflet-control-attribution{background:rgba(12,26,34,.8);color:#9fb6c3}
 .mp-root .leaflet-control-attribution a{color:#e8c66a}
+.mp-modes{display:flex;gap:6px;padding:6px calc(env(safe-area-inset-right) + 10px) 6px calc(env(safe-area-inset-left) + 10px);background:rgba(12,26,34,.96)}
+.mp-chip{min-height:40px;padding:0 11px;border-radius:20px;border:1px solid #33505f;background:#14273a;color:inherit;font:inherit;font-size:14px;cursor:pointer}
+.mp-chip[aria-pressed=true]{background:#e8c66a;border-color:#e8c66a;color:#1a1405;font-weight:600}
+.mp-modes .mp-chip{flex:1}
+.mp-panel{display:flex;flex-direction:column;gap:4px;margin-bottom:6px}
+.mp-panel .mp-row{flex-wrap:wrap;gap:6px}
+.mp-panel .mp-sep{width:1px;height:20px;background:#33505f}
+.mp-small{font-size:13px;color:#9fb6c3}
+.mp-num{width:64px;height:40px;padding:0 6px;border-radius:10px;border:1px solid #33505f;background:#14273a;color:inherit;font:inherit}
+.mp-day{flex:1;min-width:80px;height:40px;accent-color:#e8c66a}
+.mp-dl{min-width:96px;font-size:12px;line-height:1.2;text-align:right;color:#e6eef2}
+.mp-sq{min-width:40px;padding:0}
+.mp-tri{width:0;height:0;border-left:11px solid transparent;border-right:11px solid transparent;border-bottom:22px solid #e5483a;filter:drop-shadow(0 0 2px #fff)}
+.mp-shade{image-rendering:auto}
+.mp-root .leaflet-control-layers-toggle{background-image:none!important;width:44px;height:44px;display:grid;place-items:center;color:#14273a;font:600 13px/1 Barlow,system-ui,sans-serif;text-decoration:none}
+.mp-root .leaflet-control-layers-toggle::after{content:'Map'}
+.mp-root .leaflet-control-layers-expanded{padding:8px 12px;font:15px/2.2 Barlow,system-ui,sans-serif;color:#14273a}
 .mp-lbl{background:rgba(12,26,34,.85);border:1px solid #33505f;color:#e6eef2}
 `;
 
@@ -53,6 +77,9 @@ function addStyles() {
 
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 const fixed = (lat, lon) => `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+const BODY_NAME = { moon: 'Moon', sun: 'Sun', gc: 'Galactic centre' };
+const EVENT = { moon: ['moonrise', 'moonset'], sun: ['sunrise', 'sunset'], gc: ['galactic centre rise', 'galactic centre set'] };
+const R2D = 180 / Math.PI, DAY_MS = 86400000;
 
 async function pickNative(opts) {
   const r = await window.Capacitor.nativePromise('SpotPicker', 'pick', { lat: opts.lat, lon: opts.lon });
@@ -62,10 +89,11 @@ async function pickNative(opts) {
 
 /**
  * opts: {lat, lon, zoom} to start from; lines: [{azDeg, color, label}] drawn
- * from the marker as 20 km azimuth lines. Resolves to {lat, lon, name} or null.
+ * from the marker as 20 km azimuth lines; mode: 'spot' (default) | 'solver'; date: Date for the solver's day slider.
+ * Resolves to {lat, lon, name[, plan]} or null.
  */
 export async function pickSpot(opts = {}) {
-  if (window.Capacitor?.PluginHeaders?.some(h => h.name === 'SpotPicker')) return pickNative(opts);
+  if (opts.mode !== 'solver' && window.Capacitor?.PluginHeaders?.some(h => h.name === 'SpotPicker')) return pickNative(opts);
 
   addStyles();
   const root = el('div', 'mp-root');
@@ -80,11 +108,29 @@ export async function pickSpot(opts = {}) {
   use.disabled = true;
   const row1 = el('div', 'mp-row'), row2 = el('div', 'mp-row');
   row1.style.marginBottom = '8px';
-  row1.append(pos, here);
-  row2.append(cancel, el('div'), use);
-  row2.children[1].style.flex = '1';
-  foot.append(msg, row1, row2);
-  root.append(bar, mapEl, foot);
+  row2.append(cancel, here, el('div'), use);
+  row2.children[2].style.flex = '1';
+  // solver panel
+  const chip = (t, on) => { const b = el('button', 'mp-chip', t); b.setAttribute('aria-pressed', on ? 'true' : 'false'); return b; };
+  const group = (parent, labels, get, set) => {
+    const bs = labels.map(([k, t]) => { const b = chip(t, k === get()); b.dataset.k = k; b.onclick = () => { set(k); mark(); }; return b; });
+    const mark = () => bs.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.k === get())));
+    parent.append(...bs);
+    return mark;
+  };
+  const panel = el('div', 'mp-panel'), pr1 = el('div', 'mp-row'), pr2 = el('div', 'mp-row'), pr3 = el('div', 'mp-row');
+  const modes = el('div', 'mp-modes'), modeSpot = chip('Spot', true), modeSolver = chip('Solver', false);
+  modes.append(modeSpot, modeSolver);
+  const hInput = el('input', 'mp-num');
+  hInput.type = 'number'; hInput.min = '0'; hInput.max = '1000'; hInput.step = '1'; hInput.value = '0'; hInput.inputMode = 'numeric';
+  hInput.setAttribute('aria-label', 'Subject height above ground (m)'); hInput.title = 'Subject height above ground (m)';
+  const prev = el('button', 'mp-btn mp-sq', '‹'), next = el('button', 'mp-btn mp-sq', '›'), day = el('input', 'mp-day'), dl = el('div', 'mp-dl');
+  prev.setAttribute('aria-label', 'Previous day'); next.setAttribute('aria-label', 'Next day');
+  day.type = 'range'; day.min = '0'; day.max = '365'; day.step = '1'; day.value = '0'; day.setAttribute('aria-label', 'Day');
+  pr3.append(prev, day, next, dl);
+  panel.append(pr1, pr2, pr3);
+  foot.append(msg, panel, pos, row2);
+  root.append(bar, modes, mapEl, foot);
   document.body.appendChild(root);
 
   const say = (t, ok) => { msg.textContent = t || ''; msg.className = 'mp-msg' + (ok ? ' mp-ok' : ''); };
@@ -97,7 +143,18 @@ export async function pickSpot(opts = {}) {
   const hasStart = Number.isFinite(opts.lat) && Number.isFinite(opts.lon);
   const map = L.map(mapEl, { zoomControl: true, attributionControl: true })
     .setView(hasStart ? [opts.lat, opts.lon] : [30, 0], opts.zoom ?? (hasStart ? 12 : 2));
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
+  // map types; the choice is remembered on this device. Topographic (contours and hill shading) is the default.
+  const osm = '&copy; OpenStreetMap contributors';
+  const bases = {
+    Topographic: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { maxZoom: 19, maxNativeZoom: 17, subdomains: 'abc', attribution: `${osm}, SRTM | &copy; OpenTopoMap (CC-BY-SA)` }),
+    Satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Imagery &copy; Esri, Maxar, Earthstar Geographics' }),
+    Streets: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: osm }),
+  };
+  let baseName = 'Topographic';
+  try { const v = localStorage.getItem('moonshot-map'); if (bases[v]) baseName = v; } catch { /* storage blocked */ }
+  bases[baseName].addTo(map);
+  L.control.layers(bases, null, { position: 'topright', collapsed: true }).addTo(map);
+  map.on('baselayerchange', e => { try { localStorage.setItem('moonshot-map', e.name); } catch { /* storage blocked */ } });
   let tileErrors = 0;
   map.on('tileerror', () => { if (++tileErrors === 3) say('Map tiles are not loading. Check the connection; you can still search or use the position.'); });
   say('');
@@ -107,7 +164,7 @@ export async function pickSpot(opts = {}) {
   const linesGroup = L.layerGroup().addTo(map);
   const drawLines = () => {
     linesGroup.clearLayers();
-    if (!marker) return;
+    if (!marker || S.mode === 'solver') return;   // the lines are for the app's current time, not the solver's day
     const { lat, lng } = marker.getLatLng();
     for (const ln of opts.lines || []) {
       const a = ln.azDeg * Math.PI / 180;
@@ -120,12 +177,212 @@ export async function pickSpot(opts = {}) {
     if (marker) marker.setLatLng([lat, lon]);
     else marker = L.circleMarker([lat, lon], { radius: 9, color: '#fff', weight: 2, fillColor: '#e8c66a', fillOpacity: 1 }).addTo(map);
     name = hitName || null;
-    pos.textContent = fixed(lat, lon);
     use.disabled = false;
     drawLines();
+    refreshSpot();
+    loadNear(lat, lon);
   };
+  // fine terrain around the spot, so that a rise just in front of it is not missed by the wide, coarse grid
+  let nearSeq = 0;
+  const loadNear = async (lat, lon) => {
+    const my = ++nearSeq;
+    if (S.mode !== 'solver') return;
+    if (S.near && Number.isFinite(elevAt(S.near, lon - 0.012, lat - 0.009)) && Number.isFinite(elevAt(S.near, lon + 0.012, lat + 0.009))) return;
+    try {
+      const g = await fetchElevGrid([lon - 0.018, lat - 0.0135, lon + 0.018, lat + 0.0135], { maxZoom: 14, maxTiles: 9 });
+      if (my !== nearSeq) return;
+      S.near = g; refreshSpot();
+    } catch { /* the coarse answer stays */ }
+  };
+  map.on('click', e => {
+    if (S.mode === 'solver' && S.tap === 'subject') { setSubject(e.latlng.lat, e.latlng.lng); return; }
+    const hit = S.mode === 'solver' ? snapToBand(e.latlng.lat, e.latlng.lng) : null;
+    place(hit ? hit.lat : e.latlng.lat, hit ? hit.lon : e.latlng.lng, null); say('');
+  });
+  // a tap within about a fingertip of the shaded band lands on its best-aligned cell (the band is thin)
+  const snapToBand = (lat, lon) => {
+    const g = S.grid, res = S.res;
+    if (!g || !res || !S.subject) return null;
+    const p = lonLatToPx(lon, lat, g.z), ci = Math.floor((p.x - g.x0) / res.stride), cj = Math.floor((p.y - g.y0) / res.stride);
+    const rc = Math.min(40, Math.max(1, Math.ceil(28 * 2 ** (g.z - map.getZoom()) / res.stride)));
+    let best = null, bm = Infinity;
+    for (let j = Math.max(0, cj - rc); j <= Math.min(res.ny - 1, cj + rc); j++) for (let i = Math.max(0, ci - rc); i <= Math.min(res.nx - 1, ci + rc); i++) {
+      const m = Math.abs(res.miss[j * res.nx + i]);
+      if (m < bm && Math.hypot(i - ci, j - cj) <= rc) { bm = m; best = [i, j]; }
+    }
+    return best && pxToLonLat(g.x0 + (best[0] + .5) * res.stride, g.y0 + (best[1] + .5) * res.stride, g.z);
+  };
+
+
+  // ---- solver ----------------------------------------------------------------
+  const S = { mode: opts.mode === 'solver' ? 'solver' : 'spot', body: 'moon', kind: 'rise', tap: 'subject', dayIdx: 0, subject: null, grid: null, near: null, runs: [], res: null, spot: null };
+  const baseDay = TZ.dayStart(opts.date instanceof Date ? opts.date : new Date());
+  const dayAt = i => TZ.dayStart(new Date(+baseDay + i * DAY_MS + 12 * 3600000));
+  let subjMarker = null, spotLine = null, overlay = null, token = 0, fetchTimer = 0, fetchCtl = null, wantedArea = 0;
+  const solverOn = () => S.mode === 'solver';
+
+  const markBody = group(pr1, [['moon', 'Moon'], ['sun', 'Sun'], ['gc', 'Galactic centre']], () => S.body, k => { S.body = k; changed(); });
+  pr1.append(el('div', 'mp-sep'));
+  const markKind = group(pr1, [['rise', 'Rise'], ['set', 'Set']], () => S.kind, k => { S.kind = k; changed(); });
+  pr2.append(el('span', 'mp-small', 'Tap sets:'));
+  const markTap = group(pr2, [['subject', 'Subject'], ['spot', 'Spot']], () => S.tap, k => { S.tap = k; });
+  const hLbl = el('span', 'mp-small', 'Height m'); hLbl.title = 'Subject height above ground (m)';
+  pr2.append(el('div', 'mp-sep'), hLbl, hInput);
+  const markMode = () => { modeSpot.setAttribute('aria-pressed', String(!solverOn())); modeSolver.setAttribute('aria-pressed', String(solverOn())); };
+
+  const heightM = () => Math.max(0, +hInput.value || 0);
+  const subjIcon = L.divIcon({ className: '', html: '<div class="mp-tri"></div>', iconSize: [22, 22], iconAnchor: [11, 20] });
+
+  const dayLabel = () => {
+    const d = dayAt(S.dayIdx);
+    let t = TZ.format(d, 'date');
+    if (S.body === 'moon') {
+      const f = astro.sunMoon(new Date(+d + 12 * 3600000), astro.observer(S.subject?.lat ?? opts.lat ?? 0, S.subject?.lon ?? opts.lon ?? 0, 0)).moon.fraction;
+      t += `\n${Math.round(f * 100)}% lit`;
+    }
+    dl.textContent = t; dl.style.whiteSpace = 'pre-line';
+  };
+
+  const refreshInfo = () => {
+    const parts = [];
+    if (marker) { const { lat, lng } = marker.getLatLng(); parts.push(fixed(lat, lng)); }
+    if (solverOn()) {
+      if (S.subject) parts.push(`subject top ${Math.round(S.subject.elev)} m`);
+      if (S.spot) parts.push(S.spot.text);
+      else if (!S.subject) parts.push('tap the map to mark the subject');
+    }
+    pos.textContent = parts.join(' · ') || 'Tap the map to place the spot.';
+    use.disabled = !marker;
+  };
+
+  const spotResult = () => {
+    S.spot = null;
+    if (!solverOn() || !S.subject || !marker) return;
+    if (!S.grid) { S.spot = { text: 'Terrain not loaded yet.' }; return; }
+    const { lat, lng } = marker.getLatLng();
+    const r = solveSpot(S.grid, S.subject, S.runs, lat, lng, 1.7, S.near);
+    if (!r || Math.abs(r.miss) > 1.5 / R2D) { S.spot = { text: 'No alignment from here on this day.' }; return; }
+    if (!r.visible) { S.spot = { text: 'The subject is hidden by terrain from here.' }; return; }
+    const m = r.miss * R2D, nm = BODY_NAME[S.body];
+    S.spot = { r, text: `${nm} behind the subject at ${TZ.format(new Date(r.t), 'time')} · ${(r.distM / 1000).toFixed(1)} km away · subject top ${(r.alt * R2D).toFixed(1)}° up · ${nm.toLowerCase()} centre passes ${Math.abs(m).toFixed(1)}° ${m >= 0 ? 'above' : 'below'} the top` };
+  };
+  const drawSpotLine = () => {
+    if (spotLine) { spotLine.remove(); spotLine = null; }
+    if (solverOn() && S.subject && marker) spotLine = L.polyline([marker.getLatLng(), [S.subject.lat, S.subject.lon]], { color: '#e5483a', weight: 1.5, opacity: .9, interactive: false }).addTo(map);
+  };
+  const refreshSpot = () => { spotResult(); drawSpotLine(); refreshInfo(); };
+
+  const paint = res => {
+    const g = S.grid, c = document.createElement('canvas');
+    c.width = res.nx; c.height = res.ny;
+    const cx = c.getContext('2d'), img = cx.createImageData(res.nx, res.ny);
+    let shaded = 0;
+    for (let i = 0; i < res.miss.length; i++) {
+      const m = Math.abs(res.miss[i]) * R2D;
+      if (!(m < 1.5)) { img.data.set([8, 16, 24, 50], 4 * i); continue; }   // dim where there is no alignment
+      const a = m <= 0.4 ? 1 : (1.5 - m) / 1.1;
+      img.data.set([255, 186, 30, Math.round((.25 + a * .6) * 255)], 4 * i);
+      shaded++;
+    }
+    cx.putImageData(img, 0, 0);
+    const nw = pxToLonLat(g.x0, g.y0, g.z), se = pxToLonLat(g.x0 + res.nx * res.stride, g.y0 + res.ny * res.stride, g.z);
+    if (overlay) overlay.remove();
+    overlay = L.imageOverlay(c.toDataURL(), [[nw.lat, nw.lon], [se.lat, se.lon]], { opacity: 1, interactive: false, className: 'mp-shade' });
+    if (solverOn()) overlay.addTo(map);
+    return shaded;
+  };
+
+  const recompute = () => {
+    const my = ++token;
+    if (!solverOn() || !S.subject || !S.grid) { refreshSpot(); return; }
+    requestAnimationFrame(() => setTimeout(() => {
+      if (my !== token) return;
+      const sj = S.subject;
+      S.runs = bodyTrack(S.body, S.kind, dayAt(S.dayIdx), astro.observer(sj.lat, sj.lon, sj.elev));
+      const res = S.res = solveGrid(S.grid, sj, S.runs);
+      if (my !== token) return;
+      const n = paint(res);
+      say(n ? '' : `No ${EVENT[S.body][S.kind === 'rise' ? 0 : 1]} behind the subject is visible in this area on this day.`, !!n);
+      refreshSpot();
+    }, 0));
+  };
+  const changed = () => { dayLabel(); recompute(); };
+
+  const contains = (g, [w, s, e, n]) => {
+    const a = pxToLonLat(g.x0, g.y0, g.z), b = pxToLonLat(g.x0 + g.nx, g.y0 + g.ny, g.z);
+    return w >= a.lon && e <= b.lon && n <= a.lat && s >= b.lat;
+  };
+  const wantedBbox = () => {
+    const mb = map.getBounds(), sj = S.subject, dLat = 100 / 111.32, dLon = dLat / Math.cos(sj.lat * Math.PI / 180);
+    return [Math.max(Math.min(mb.getWest(), sj.lon), sj.lon - dLon), Math.max(Math.min(mb.getSouth(), sj.lat), sj.lat - dLat),
+      Math.min(Math.max(mb.getEast(), sj.lon), sj.lon + dLon), Math.min(Math.max(mb.getNorth(), sj.lat), sj.lat + dLat)];
+  };
+  const refetch = (delay = 400, force = false) => {
+    clearTimeout(fetchTimer);
+    if (!solverOn() || !S.subject) return;
+    fetchTimer = setTimeout(async () => {
+      const bb = wantedBbox(), area = (bb[2] - bb[0]) * (bb[3] - bb[1]);
+      if (!force && S.grid && contains(S.grid, bb) && area > wantedArea / 4) return;
+      if (fetchCtl) fetchCtl.abort();
+      const ctl = fetchCtl = new AbortController();
+      say('Loading terrain…', true);
+      try {
+        const g = await fetchElevGrid(bb, { signal: ctl.signal });
+        if (ctl !== fetchCtl) return;
+        S.grid = g; wantedArea = area; say('');
+        recompute();
+      } catch (e) { if (e?.name !== 'AbortError' && ctl === fetchCtl) say(e.message || 'The terrain data could not be loaded.'); }
+    }, delay);
+  };
+  map.on('moveend', () => refetch());
+
+  const setSubject = async (lat, lon) => {
+    say('Loading terrain…', true);
+    try {
+      let g = S.grid && Number.isFinite(elevAt(S.grid, lon, lat)) ? S.grid : null;
+      if (!g) g = await fetchElevGrid([lon - 0.02, lat - 0.02, lon + 0.02, lat + 0.02]);
+      // snap to the highest cell within 250 m
+      const c = lonLatToPx(lon, lat, g.z), mpp = 156543.03 * Math.cos(lat * Math.PI / 180) / 2 ** g.z, r = 250 / mpp;
+      let bx = c.x, by = c.y, bz = -Infinity;
+      for (let y = Math.floor(c.y - r); y <= c.y + r; y++) for (let x = Math.floor(c.x - r); x <= c.x + r; x++) {
+        const i = x - g.x0, j = y - g.y0;
+        if (i < 0 || j < 0 || i >= g.nx || j >= g.ny || Math.hypot(x + .5 - c.x, y + .5 - c.y) > r) continue;
+        const z = g.data[j * g.nx + i];
+        if (z > bz) { bz = z; bx = x + .5; by = y + .5; }
+      }
+      if (!Number.isFinite(bz)) throw new Error('No terrain data at that point.');
+      const p = pxToLonLat(bx, by, g.z);
+      S.subject = { lat: p.lat, lon: p.lon, ground: bz, elev: bz + heightM() };
+      if (!S.grid) S.grid = g;
+      if (subjMarker) subjMarker.setLatLng([p.lat, p.lon]);
+      else subjMarker = L.marker([p.lat, p.lon], { icon: subjIcon, interactive: false, keyboard: false }).addTo(map);
+      S.tap = 'spot'; markTap();
+      say(''); dayLabel();
+      refetch(0, true); recompute();
+    } catch (e) { say(e.message || 'The terrain data could not be loaded.'); }
+  };
+
+  const applyMode = () => {
+    markMode();
+    panel.style.display = solverOn() ? '' : 'none';
+    for (const l of [subjMarker, overlay]) if (l) (solverOn() ? l.addTo(map) : l.remove());
+    if (solverOn()) { dayLabel(); refetch(0); recompute(); } else { token++; if (spotLine) { spotLine.remove(); spotLine = null; } S.spot = null; refreshInfo(); }
+    refreshInfo();
+    setTimeout(() => map.invalidateSize(), 0);
+  };
+  modeSpot.onclick = () => { S.mode = 'spot'; applyMode(); };
+  modeSolver.onclick = () => { S.mode = 'solver'; if (S.subject) S.tap = 'spot'; markTap(); applyMode(); };
+
+  hInput.onchange = () => {
+    if (!S.subject) return;
+    S.subject.elev = S.subject.ground + heightM(); refetch(0, false); recompute();
+  };
+  const setDay = i => { i = Math.max(0, Math.min(365, i)); if (i === S.dayIdx) return; S.dayIdx = i; day.value = String(i); tick(); changed(); };
+  day.oninput = () => setDay(+day.value);
+  prev.onclick = () => setDay(S.dayIdx - 1);
+  next.onclick = () => setDay(S.dayIdx + 1);
   if (hasStart) place(opts.lat, opts.lon, null);
-  map.on('click', e => { place(e.latlng.lat, e.latlng.lng, null); say(''); });
+  applyMode();
 
   let busy = false;
   const search = async () => {
@@ -139,7 +396,7 @@ export async function pickSpot(opts = {}) {
       const hit = (await r.json())[0];
       if (!hit) { say('Nothing found by that name.'); return; }
       const lat = +hit.lat, lon = +hit.lon;
-      place(lat, lon, hit.name || q);
+      if (S.mode === 'solver' && S.tap === 'subject') setSubject(lat, lon); else place(lat, lon, hit.name || q);   // in the solver a search finds the subject
       map.flyTo([lat, lon], Math.max(map.getZoom(), 12));
       say('');
     } catch { say('Search failed. Check the connection and try again.'); } finally { busy = false; }
@@ -162,8 +419,13 @@ export async function pickSpot(opts = {}) {
     cancel.onclick = () => done(null);
     use.onclick = () => {
       if (!marker) return;
-      const { lat, lng } = marker.getLatLng();
-      done({ lat, lon: lng, name: name || fixed(lat, lng) });
+      const { lat, lng } = marker.getLatLng(), out = { lat, lon: lng, name: name || fixed(lat, lng) };
+      const r = solverOn() && S.subject && S.spot?.r;
+      if (r && r.visible) {
+        const sj = S.subject;
+        out.plan = { time: new Date(r.t), azDeg: r.az * R2D, altDeg: r.alt * R2D, body: S.body, kind: S.kind, subject: { lat: sj.lat, lon: sj.lon, elev: sj.elev } };
+      }
+      done(out);
     };
   });
 }

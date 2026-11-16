@@ -1,6 +1,6 @@
 // Sun, moon and Milky Way positions. No DOM. Angles in radians unless the name
 // ends in Deg. Directions are ENU unit vectors [east, north, up].
-import * as A from '../vendor/astronomy.js?v=1115.1836-90d6dbb';
+import * as A from '../vendor/astronomy.js?v=1116.0444-41cdbb4';
 
 export const Body = A.Body;
 
@@ -103,4 +103,13 @@ export function sunBand(altDeg) {
   if (altDeg > -12) return 'nautical';
   if (altDeg > -18) return 'astro';
   return 'night';
+}
+
+/** Galactic centre (J2000 RA 17h45m40.04s, Dec -29d00m28.1s): {az, alt} radians, refracted. */
+export function gcAltAz(date, obs) {
+  const t = toTime(date);
+  A.DefineStar(A.Body.Star1, 17 + 45 / 60 + 40.04 / 3600, -(29 + 28.1 / 3600), 1000);
+  const eq = A.Equator(A.Body.Star1, t, obs, true, true);
+  const hor = A.Horizon(t, obs, eq.ra, eq.dec, 'normal');
+  return { az: hor.azimuth * D2R, alt: hor.altitude * D2R };
 }

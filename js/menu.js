@@ -1,9 +1,10 @@
 // menu.js -- the Menu sheet: Place, Camera, Display, Info tabs. Built once from the app's
 // functions (passed in by main.js, so there is no import cycle).
-import { whereAmI, terrainEstimate, createPlace, listPlaces, openPlace, removePlace, updatePlace, storageUse } from './places.js?v=1115.1836-90d6dbb';
-import { pickSpot } from './mappick.js?v=1115.1836-90d6dbb';
-import { SENSORS, FOCALS, frameSize, fovDeg } from './optics.js?v=1115.1836-90d6dbb';
-import { validZone, getZone } from './tz.js?v=1115.1836-90d6dbb';
+import { whereAmI, terrainEstimate, createPlace, listPlaces, openPlace, removePlace, updatePlace, storageUse } from './places.js?v=1116.0444-41cdbb4';
+import { pickSpot } from './mappick.js?v=1116.0444-41cdbb4';
+import { SENSORS, FOCALS, frameSize, fovDeg, nearestFocalIndex } from './optics.js?v=1116.0444-41cdbb4';
+import { tick } from './haptic.js?v=1116.0444-41cdbb4';
+import { validZone, getZone } from './tz.js?v=1116.0444-41cdbb4';
 
 const R2D = 180 / Math.PI;
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -30,6 +31,7 @@ export function initMenu(api) {
     <div class="two">
       <button class="btn" id="pHere">Where I am</button>
       <button class="btn" id="pMap">Pick on the map</button>
+      <button class="btn" id="pSolve">Find a spot for a subject</button>
     </div>
     <div class="msg" id="pMsg" role="status"></div>
     <div id="pNew" hidden>
@@ -57,7 +59,9 @@ export function initMenu(api) {
     <label class="sw">Camera mode<input id="cOn" type="checkbox"></label>
     <div class="row"><label for="cSensor">Sensor</label><select id="cSensor"></select></div>
     <div class="row"><label for="cFocal">Focal length (mm) <span id="cFov"></span></label>
-      <div class="chips" id="cChips"></div>
+      <div class="fread" id="cRead" aria-hidden="true"></div>
+      <input type="range" id="cSlide" class="fslide" min="0" max="${FOCALS.length - 1}" step="1" value="0" aria-label="Focal length">
+      <div class="fticks" id="cTicks" aria-hidden="true"></div>
       <input type="number" id="cFocal" inputmode="numeric" min="8" max="2000" step="1">
     </div>
     <div class="row"><label>Orientation</label>
@@ -161,22 +165,24 @@ export function initMenu(api) {
       showDraft({ lat: p.lat, lon: p.lon, name: 'My location' });
     } catch (e) { say(e.message); } finally { $('pHere').disabled = false; }
   });
-  $('pMap').addEventListener('click', async () => {
+  const openMap = async mode => {
     if (busy) return;
     say('');
     const start = S.place?.id ? { lat: S.place.lat, lon: S.place.lon } : {};
     sheet.hidden = true;
     let r = null;
-    try { r = await pickSpot({ ...start, lines: lines() }); } catch (e) { say(e.message); }
+    try { r = await pickSpot({ ...start, lines: lines(), mode, date: S.date }); } catch (e) { say(e.message); }
     sheet.hidden = false;
-    if (r) showDraft({ lat: r.lat, lon: r.lon, name: r.name });
-  });
+    if (r) showDraft({ lat: r.lat, lon: r.lon, name: r.name, plan: r.plan || null });
+  };
+  $('pMap').addEventListener('click', () => openMap('spot'));
+  $('pSolve').addEventListener('click', () => openMap('solver'));
 
   function setBusy(on) {
     busy = on;
     $('pProg').hidden = !on;
     $('pGo').disabled = on;
-    for (const id of ['pHere', 'pMap', 'pName']) $(id).disabled = on;
+    for (const id of ['pHere', 'pMap', 'pSolve', 'pName']) $(id).disabled = on;
     $('pCancel').textContent = on ? 'Cancel download' : 'Cancel';
   }
   $('pCancel').addEventListener('click', () => {
@@ -192,6 +198,7 @@ export function initMenu(api) {
       say('Building the horizon…', false);
       await nextFrame();
       api.usePlace(r);
+      if (d.plan) { api.setTime(d.plan.time); api.setView({ azDeg: d.plan.azDeg, altDeg: d.plan.altDeg }); }   // solver result: the alignment moment, aimed at the subject
       draft = null; $('pNew').hidden = true; $('pPrompt').hidden = true;
       say(r.place.saved ? '' : 'This device would not keep the place, so it works until you close the page.');
       refreshList();
@@ -239,10 +246,18 @@ export function initMenu(api) {
 
   // ------------------------------------------------------------- camera
   $('cSensor').innerHTML = SENSORS.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
-  $('cChips').innerHTML = FOCALS.map(f => `<button data-f="${f}">${f}</button>`).join('');
+  $('cTicks').innerHTML = [9, 14, 24, 35, 50, 85, 135, 200, 400, 800].map(f =>
+    `<span style="--p:${FOCALS.indexOf(f) / (FOCALS.length - 1)}">${f}</span>`).join('');
+  let slideIdx = -1, sliding = false;
   $('cOn').addEventListener('change', e => api.setCamera({ on: e.target.checked }));
   $('cSensor').addEventListener('change', e => api.setCamera({ sensor: e.target.value }));
-  $('cChips').addEventListener('click', e => { const b = e.target.closest('button'); if (b) api.setCamera({ focal: +b.dataset.f }); });
+  $('cSlide').addEventListener('input', e => {
+    const i = +e.target.value, moved = i !== slideIdx;
+    slideIdx = i; sliding = true;
+    api.setCamera({ focal: FOCALS[i] });
+    sliding = false;
+    if (moved) tick();
+  });
   $('cFocal').addEventListener('change', e => api.setCamera({ focal: +e.target.value }));
   $('cOri').addEventListener('click', e => { const b = e.target.closest('button'); if (b) api.setCamera({ portrait: b.dataset.p === '1' }); });
   $('cThirds').addEventListener('change', e => { S.show.thirds = e.target.checked; api.requestDraw(); syncDisplay(); });
@@ -251,7 +266,10 @@ export function initMenu(api) {
     const c = S.camera, s = SENSORS.find(x => x.id === c.sensor) || SENSORS[0], f = frameSize(s, c.portrait);
     $('cOn').checked = c.on; $('cSensor').value = c.sensor;
     if (document.activeElement !== $('cFocal')) $('cFocal').value = c.focal;
-    $('cChips').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', +b.dataset.f === c.focal));
+    const sl = $('cSlide'), idx = nearestFocalIndex(c.focal);
+    if (!sliding) { sl.value = idx; slideIdx = idx; }
+    sl.setAttribute('aria-valuetext', `${c.focal} mm`);
+    $('cRead').textContent = `${c.focal} mm`;
     $('cOri').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', (b.dataset.p === '1') === c.portrait));
     $('cFov').textContent = `${fovDeg(f.w, c.focal).toFixed(2)}° × ${fovDeg(f.h, c.focal).toFixed(2)}°`;
     $('cThirds').checked = S.show.thirds;

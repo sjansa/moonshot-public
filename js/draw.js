@@ -1,8 +1,8 @@
 // draw.js -- everything painted on the canvas (PLAN 7.2, 7.3). All sizes are device pixels.
-import { skyTAt } from './horizon.js?v=1115.1836-90d6dbb';
-import { screenCamera, cameraGeometry } from './view.js?v=1115.1836-90d6dbb';
-import { format as tzFormat } from './tz.js?v=1115.1836-90d6dbb';
-import { TAU, D2R } from '../core/terrain.js?v=1115.1836-90d6dbb';
+import { skyTAt } from './horizon.js?v=1116.0444-41cdbb4';
+import { screenCamera, cameraGeometry } from './view.js?v=1116.0444-41cdbb4';
+import { format as tzFormat } from './tz.js?v=1116.0444-41cdbb4';
+import { TAU, D2R } from '../core/terrain.js?v=1116.0444-41cdbb4';
 
 const clamp01 = x => Math.min(1, Math.max(0, x));
 const lerp = (a, b, t) => a + (b - a) * t;
