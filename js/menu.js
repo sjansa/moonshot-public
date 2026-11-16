@@ -1,10 +1,10 @@
 // menu.js -- the Menu sheet: Place, Camera, Display, Info tabs. Built once from the app's
 // functions (passed in by main.js, so there is no import cycle).
-import { whereAmI, terrainEstimate, createPlace, listPlaces, openPlace, removePlace, updatePlace, storageUse } from './places.js?v=1116.0444-41cdbb4';
-import { pickSpot } from './mappick.js?v=1116.0444-41cdbb4';
-import { SENSORS, FOCALS, frameSize, fovDeg, nearestFocalIndex } from './optics.js?v=1116.0444-41cdbb4';
-import { tick } from './haptic.js?v=1116.0444-41cdbb4';
-import { validZone, getZone } from './tz.js?v=1116.0444-41cdbb4';
+import { whereAmI, terrainEstimate, createPlace, listPlaces, openPlace, removePlace, updatePlace, storageUse } from './places.js?v=1116.0520-8c43238';
+import { pickSpot } from './mappick.js?v=1116.0520-8c43238';
+import { SENSORS, FOCALS, frameSize, fovDeg, nearestFocalIndex } from './optics.js?v=1116.0520-8c43238';
+import { tick } from './haptic.js?v=1116.0520-8c43238';
+import { validZone, getZone } from './tz.js?v=1116.0520-8c43238';
 
 const R2D = 180 / Math.PI;
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -73,6 +73,7 @@ export function initMenu(api) {
   <div class="pane" data-pane="display" hidden>
     <label class="sw">Sun and moon paths<input id="dPaths" data-k="paths" type="checkbox"></label>
     <label class="sw">Ridge lines<input id="dRidges" data-k="ridges" type="checkbox"></label>
+    <label class="sw">Peak names<input id="dPeaks" data-k="peaks" type="checkbox"></label>
     <label class="sw">Scales (compass ticks, level line)<input id="dScales" data-k="scales" type="checkbox"></label>
     <label class="sw">Thirds grid (camera mode)<input id="dThirds" data-k="thirds" type="checkbox"></label>
     <div class="row"><label>Time zone <span id="zCur"></span></label>
@@ -84,7 +85,7 @@ export function initMenu(api) {
 
   <div class="pane" data-pane="info" hidden>
     <details class="info" open><summary>Credits</summary>
-      <p>Terrain: <b>Mapzen / AWS Terrain Tiles</b>. Map and place search: &copy; <b>OpenStreetMap contributors</b>. Astronomy: <b>astronomy-engine</b> (MIT, Don Cross). Map display: <b>Leaflet</b> (BSD-2-Clause).</p>
+      <p>Terrain: <b>Mapzen / AWS Terrain Tiles</b>. Map and place search: &copy; <b>OpenStreetMap contributors</b> (also peak names, via Overpass). Astronomy: <b>astronomy-engine</b> (MIT, Don Cross). Map display: <b>Leaflet</b> (BSD-2-Clause).</p>
     </details>
     <details class="info" open><summary>Take care</summary>
       <p>Positions are computed, terrain is a 10 to 120 m model. Trees and buildings are not included. Check the scene on site.</p>
@@ -173,7 +174,10 @@ export function initMenu(api) {
     let r = null;
     try { r = await pickSpot({ ...start, lines: lines(), mode, date: S.date }); } catch (e) { say(e.message); }
     sheet.hidden = false;
-    if (r) showDraft({ lat: r.lat, lon: r.lon, name: r.name, plan: r.plan || null });
+    if (!r) return;
+    const what = r.plan && `${{ moon: 'Moon', sun: 'Sun', gc: 'Milky Way' }[r.plan.body]}${r.plan.kind === 'rise' ? 'rise' : 'set'} spot`;
+    showDraft({ lat: r.lat, lon: r.lon, name: what || r.name, plan: r.plan || null });
+    if (r.plan) $('pGo').click();          // a solver spot goes straight on: download, then the main view at the alignment time
   };
   $('pMap').addEventListener('click', () => openMap('spot'));
   $('pSolve').addEventListener('click', () => openMap('solver'));
@@ -198,11 +202,11 @@ export function initMenu(api) {
       say('Building the horizon…', false);
       await nextFrame();
       api.usePlace(r);
-      if (d.plan) { api.setTime(d.plan.time); api.setView({ azDeg: d.plan.azDeg, altDeg: d.plan.altDeg }); }   // solver result: the alignment moment, aimed at the subject
+      if (d.plan) api.applyPlan(d.plan);   // solver result: the alignment moment, aimed at the subject
       draft = null; $('pNew').hidden = true; $('pPrompt').hidden = true;
       say(r.place.saved ? '' : 'This device would not keep the place, so it works until you close the page.');
       refreshList();
-      if (r.place.saved) close();
+      if (r.place.saved || d.plan) close();
     } catch (e) {
       say(e?.name === 'AbortError' ? 'Download canceled.' : (e?.message || 'The download failed.'), e?.name !== 'AbortError');
     } finally { setBusy(false); abort = null; }
@@ -276,7 +280,7 @@ export function initMenu(api) {
   }
 
   // ------------------------------------------------------------- display
-  const swIds = ['dPaths', 'dRidges', 'dScales', 'dThirds'];
+  const swIds = ['dPaths', 'dRidges', 'dPeaks', 'dScales', 'dThirds'];
   for (const id of swIds) $(id).addEventListener('change', e => {
     S.show[e.target.dataset.k] = e.target.checked; api.invalidate(); syncCamera();
   });

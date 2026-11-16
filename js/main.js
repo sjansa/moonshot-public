@@ -1,26 +1,28 @@
 // main.js -- state, wiring, readouts, URL state, startup. The menu (menu.js) gets the functions it needs through initMenu().
-import { observer, sunMoon, altAz, path, Body, milkyWay, milkyWayAt } from './astro.js?v=1116.0444-41cdbb4';
-import * as TZ from './tz.js?v=1116.0444-41cdbb4';
-import { Ruler } from './ruler.js?v=1116.0444-41cdbb4';
-import { makeHorizon, terrainEvents, hidden } from './horizon.js?v=1116.0444-41cdbb4';
-import { DEMO, demoTerrain } from './demo.js?v=1116.0444-41cdbb4';
-import { draw } from './draw.js?v=1116.0444-41cdbb4';
-import { clampView, attachGestures } from './view.js?v=1116.0444-41cdbb4';
-import { SENSORS } from './optics.js?v=1116.0444-41cdbb4';
-import { listPlaces, openPlace, getLastPlaceId, setLastPlaceId } from './places.js?v=1116.0444-41cdbb4';
-import { initMenu } from './menu.js?v=1116.0444-41cdbb4';
-import { tick } from './haptic.js?v=1116.0444-41cdbb4';
+import { observer, sunMoon, altAz, path, Body, milkyWay, milkyWayAt, nightSky, enu } from './astro.js?v=1116.0520-8c43238';
+import { loadSkyArt } from './skyart.js?v=1116.0520-8c43238';
+import * as TZ from './tz.js?v=1116.0520-8c43238';
+import { Ruler } from './ruler.js?v=1116.0520-8c43238';
+import { makeHorizon, terrainEvents, hidden } from './horizon.js?v=1116.0520-8c43238';
+import { DEMO, demoTerrain } from './demo.js?v=1116.0520-8c43238';
+import { draw } from './draw.js?v=1116.0520-8c43238';
+import { clampView, attachGestures } from './view.js?v=1116.0520-8c43238';
+import { SENSORS } from './optics.js?v=1116.0520-8c43238';
+import { listPlaces, openPlace, getLastPlaceId, setLastPlaceId, loadPeaks } from './places.js?v=1116.0520-8c43238';
+import { visiblePeaks } from './peaks.js?v=1116.0520-8c43238';
+import { initMenu } from './menu.js?v=1116.0520-8c43238';
+import { tick } from './haptic.js?v=1116.0520-8c43238';
 
 const R2D = 180 / Math.PI;
 
 export const S = {
   date: new Date(),
   view: { azDeg: 90, altDeg: 10, hfovDeg: 60 },
-  show: { sun: true, moon: true, milkyWay: true, paths: true, ridges: true, scales: true, thirds: false },
+  show: { sun: true, moon: true, milkyWay: true, paths: true, ridges: true, peaks: true, scales: true, thirds: false },
   camera: { on: false, sensor: 'ff', focal: 50, exact: 50, portrait: false },
   place: null, terrain: null, obs: null, horizon: null,
   mw: milkyWay(), mwNow: null, sm: null,
-  paths: null, events: null, dayKey: null, placeSeq: 0,
+  peaks: [], paths: null, events: null, dayKey: null, placeSeq: 0,
   cam: null, ui: { top: 56, bottom: 600 }, tz: 'device',
 };
 
@@ -159,8 +161,31 @@ export function setPlace({ name, lat, lon, terrain, eyeM = 1.7, maxDist = 60000,
   S.obs = observer(lat, lon, Number.isFinite(ground) ? ground : 0);
   S.horizon = makeHorizon(terrain, lat, lon, eyeM, maxDist);
   S.placeSeq++;
+  S.subject = null;
+  S.peaks = [];
+  if (id) {
+    const seq = S.placeSeq;
+    loadPeaks({ id, lat, lon, reach: S.place.reach }).then(list => {
+      if (seq !== S.placeSeq) return;
+      S.peaks = visiblePeaks(S.horizon, terrain, list, { maxDist }); requestDraw();
+    }).catch(() => {});
+  }
   ruler?.invalidate();
   setTime(S.date);
+  changed();
+}
+
+/**
+ * A subject-solver result for the place just shown: go to the alignment moment, aim at the
+ * subject, mark it, show the body, and put the ruler on its 2 hour span for exact timing.
+ */
+export function applyPlan(plan) {
+  const az = plan.azDeg * Math.PI / 180, alt = plan.altDeg * Math.PI / 180;
+  S.subject = { az, alt, dir: enu(az, alt), body: plan.body, kind: plan.kind };
+  S.show[plan.body === 'gc' ? 'milkyWay' : plan.body] = true;
+  ruler.setSpan(2 * 3600e3);
+  setTime(new Date(Math.round(+plan.time / 60000) * 60000));
+  setView({ azDeg: plan.azDeg, altDeg: plan.altDeg, hfovDeg: S.camera.on ? undefined : Math.min(S.view.hfovDeg, 25) });
   changed();
 }
 
@@ -190,6 +215,7 @@ ruler = new Ruler($('ruler'), {
   haptic: tick,
   time: S.date, onChange: d => setTime(d),
   sunAltDeg: d => (S.obs ? altAz(Body.Sun, d, S.obs).alt * R2D : -90),
+  sky: d => (S.obs ? { ...nightSky(dayStartOf(d), S.obs), south: S.place?.lat < 0 } : null),
   marks: rulerMarks, format: TZ.format, dateInputValue: TZ.dateInputValue, dateFromInput: TZ.dateFromInput,
 });
 
@@ -283,7 +309,7 @@ const num = k => numOr(q.get(k));
 const isDemo = q.has('demo');
 for (const k of (q.get('off') || '').split(',')) if (k in S.show) S.show[k] = false;   // testing: ?off=ridges,scales
 resize();
-const menu = initMenu({ S, setPlace, usePlace, useDemo, setEye, setTime, setView, setTz, setCamera, requestDraw, onChange, invalidate: () => { ruler.invalidate(); updateLines(); requestDraw(); } });
+const menu = initMenu({ S, setPlace, usePlace, applyPlan, useDemo, setEye, setTime, setView, setTz, setCamera, requestDraw, onChange, invalidate: () => { ruler.invalidate(); updateLines(); requestDraw(); } });
 
 async function start() {
   const hash = parseHash();
@@ -317,7 +343,8 @@ async function start() {
 }
 start();
 
-window.moonshot = { S, setTime, setView, setPlace, usePlace, useDemo, requestDraw, setTz, setCamera, ruler, rulerMarks, hashString, menu };
+loadSkyArt(requestDraw);
+window.moonshot = { S, setTime, setView, setPlace, usePlace, applyPlan, useDemo, requestDraw, setTz, setCamera, ruler, rulerMarks, hashString, menu };
 
 // ---- offline shell: not in the native app (Capacitor serves the files itself) ----
 if ('serviceWorker' in navigator && !window.Capacitor) {

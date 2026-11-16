@@ -4,7 +4,9 @@
 // 8 px and the scale switches to FINE_SPAN (20 min across the width, a tick per
 // minute, labels every 5) while the finger stays down; the gesture continues without
 // a jump and the selected span returns on release. The haptic tick is opts.haptic.
-// No imports. See PLAN.md section 8.
+// Only import: skyglyph.js (moon + Milky Way glyph in the readout). See PLAN.md section 8.
+
+import { makeSkyGlyph, drawPhase } from './skyglyph.js?v=1116.0520-8c43238';
 
 export const SPANS = [2 * 3600e3, 12 * 3600e3, 3 * 86400e3, 30 * 86400e3];
 const SPAN_LABELS = ['2h', '12h', '3d', '30d'];
@@ -88,8 +90,9 @@ function injectStyle() {
 .rl-btn:focus-visible { outline: 2px solid var(--go, #3fb6ff); outline-offset: 2px; }
 .rl-span { color: var(--go, #3fb6ff); }
 .rl-step { font-size: 24px; font-weight: 500; letter-spacing: 0; }
-.rl-read { position: absolute; top: 2px; left: 50%; transform: translateX(-50%); height: 44px; min-width: 96px; padding: 0 10px; border-radius: 12px; border: 1px solid var(--line, rgba(255,255,255,.16));
-  background: rgba(8,16,22,.78); color: var(--text, #f2f6f8); display: grid; place-content: center; text-align: center; gap: 1px; overflow: hidden; cursor: pointer; }
+.rl-read { position: absolute; top: 2px; left: 50%; transform: translateX(-50%); height: 44px; min-width: 96px; padding: 0 8px; border-radius: 12px; border: 1px solid var(--line, rgba(255,255,255,.16));
+  background: rgba(8,16,22,.78); color: var(--text, #f2f6f8); display: flex; align-items: center; justify-content: center; gap: 6px; overflow: hidden; cursor: pointer; }
+.rl-tx { display: grid; gap: 1px; text-align: center; }
 .rl-read:focus-within { outline: 2px solid var(--go, #3fb6ff); outline-offset: 2px; }
 .rl-rd { font: 500 11px/1 var(--body, system-ui, sans-serif); color: #c9d6dd; white-space: nowrap; pointer-events: none; }
 .rl-rt { font: 700 19px/1 var(--display, "Barlow Condensed", "Helvetica Neue", Arial, sans-serif); letter-spacing: .04em; white-space: nowrap; pointer-events: none; }
@@ -144,7 +147,10 @@ export class Ruler {
     this.rt = document.createElement('span'); this.rt.className = 'rl-rt';
     this.dateIn = document.createElement('input');
     this.dateIn.type = 'date'; this.dateIn.className = 'rl-date'; this.dateIn.setAttribute('aria-label', 'Pick date');
-    this.read.append(this.rd, this.rt, this.dateIn);
+    this.glyph = makeSkyGlyph({ size: 26 });
+    const tx = document.createElement('span'); tx.className = 'rl-tx'; tx.append(this.rd, this.rt);
+    this.read.append(this.glyph.el, tx, this.dateIn);
+    this._skyDay = null;
     left.append(this.bNow, this.bSpan);
     right.append(this.bMinus, this.bPlus);
     container.append(left, right, this.read);
@@ -252,7 +258,7 @@ export class Ruler {
     this._schedule();
   }
 
-  invalidate() { this._bands = null; this._marks = null; this._syncDate(); this._schedule(); }
+  invalidate() { this._bands = null; this._marks = null; this._skyDay = null; this._syncDate(); this._schedule(); }
 
   resize() {
     const w = this.el.clientWidth || 1, h = this.el.clientHeight || 96;
@@ -293,7 +299,11 @@ export class Ruler {
   }
 
   _syncDate() {
-    try { const v = this.o.dateInputValue(this.time); if (v && this.dateIn.value !== v) this.dateIn.value = v; } catch (e) { /* ignore */ }
+    try {
+      const v = this.o.dateInputValue(this.time);
+      if (v && this.dateIn.value !== v) this.dateIn.value = v;
+      if (this.o.sky && v !== this._skyDay) { this._skyDay = v; const d = this.o.sky(this.time); this.glyph.update(d, { south: !!(d && d.south) }); }
+    } catch (e) { /* ignore */ }
     const ds = this.o.format(this.time, 'date'), ts = this.o.format(this.time, 'time');
     this.rd.textContent = ds; this.rt.textContent = ts;
     this.cv.setAttribute('aria-valuetext', ds + ' ' + ts);
@@ -319,7 +329,7 @@ export class Ruler {
     if (stale(this._marks)) {
       let list = [];
       try { list = this.o.marks ? this.o.marks(new Date(t - span), new Date(t + span)) || [] : []; } catch (e) { list = []; }
-      this._marks = { center: t, spanIdx: ci, list };
+      this._marks = { center: t, spanIdx: ci, list, sky: new Map() };
     }
   }
 
@@ -391,6 +401,12 @@ export class Ruler {
       const x = Math.round(this._xOf(k.ms, t)) + 0.5;
       ctx.strokeStyle = k.major ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.45)';
       ctx.beginPath(); ctx.moveTo(x, H); ctx.lineTo(x, H - (k.major ? 12 : 6)); ctx.stroke();
+      if (this._spanIdx === 3 && !this._fine && this.o.sky) {   // moon phase above each day tick
+        const sk = this._marks.sky;
+        if (!sk.has(k.ms)) { let d = null; try { d = this.o.sky(new Date(k.ms)); } catch (e) { /* ignore */ } sk.set(k.ms, d); }
+        const d = sk.get(k.ms);
+        if (d) drawPhase(ctx, x, H - 36, 4.5, d.fraction, d.waxing, d.south);
+      }
       if (k.label) {
         ctx.font = font(k.bold ? 12 : 11, k.bold ? 700 : 500);
         ctx.fillStyle = k.bold ? '#ffffff' : 'rgba(242,246,248,0.85)';
@@ -402,7 +418,7 @@ export class Ruler {
 
     // marks (triangle on the top edge, short label when there is room)
     ctx.textAlign = 'left';
-    const marks = this._marks.list.map((m) => ({ ...m, x: this._xOf(m.date.getTime(), t) }))
+    const marks = (this._spanIdx === 3 ? [] : this._marks.list).map((m) => ({ ...m, x: this._xOf(m.date.getTime(), t) }))
       .filter((m) => m.x > -40 && m.x < W + 40).sort((a, c) => a.x - c.x);
     let lastEnd = -1e9;
     ctx.font = font(10, 600);

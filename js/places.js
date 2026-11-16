@@ -7,8 +7,8 @@
 //
 // Nothing here touches browser globals at import time (tests run it in Node).
 
-import { buildTerrain, estimate, expandBbox, DEM_UNIT } from '../core/build.js?v=1116.0444-41cdbb4';
-import { Grid, Terrain } from '../core/terrain.js?v=1116.0444-41cdbb4';
+import { buildTerrain, estimate, expandBbox, DEM_UNIT } from '../core/build.js?v=1116.0520-8c43238';
+import { Grid, Terrain } from '../core/terrain.js?v=1116.0520-8c43238';
 
 export const REACH = { normal: { km: 60, coarseRes: 60 }, far: { km: 120, coarseRes: 120 } };
 export const FINE_KM = 8, FINE_RES = 10;
@@ -43,6 +43,62 @@ export function packMeta(place, built) {
 
 export function terrainFromPack(meta, fineBuf, coarseBuf) {
   return new Terrain(new Grid(meta.fine, new Uint16Array(fineBuf), meta.demUnit), new Grid(meta.coarse, new Uint16Array(coarseBuf), meta.demUnit));
+}
+
+// --------------------------------------------------------------------- peaks
+
+const LATIN = /[A-Za-z\u00C0-\u024F]/;
+/** Meters from an OSM ele tag ("3430", "3430 m", "3,430"), else null. */
+export function parseEle(s) {
+  const m = /^\s*(-?\d[\d,]*(?:\.\d+)?)\s*(?:m|meters?|metres?)?\s*$/i.exec(String(s ?? ''));
+  const v = m ? +m[1].replace(/,/g, '') : NaN;
+  return Number.isFinite(v) ? v : null;
+}
+
+/** Named peaks and volcanoes from OpenStreetMap (Overpass) within a place's reach. -> [{name, lat, lon, ele}] */
+export async function fetchPeaks(lat, lon, reach = 'normal', signal) {
+  const km = (REACH[reach] || REACH.normal).km, dLat = km / 110.54, dLon = km / (111.32 * Math.cos(lat * Math.PI / 180));
+  const q = `[out:json][timeout:40];node["natural"~"^(peak|volcano)$"]["name"](${lat - dLat},${lon - dLon},${lat + dLat},${lon + dLon});out body;`;
+  let j, last;
+  // the public servers are often busy: try each in turn
+  for (const host of ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']) {
+    try {
+      // 20 s per server, so a hung one does not block the next
+      const quit = new AbortController(), timer = setTimeout(() => quit.abort(), 20000);
+      signal?.addEventListener('abort', () => quit.abort(), { once: true });
+      let r;
+      try { r = await fetch(host, { method: 'POST', body: 'data=' + encodeURIComponent(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, signal: quit.signal }); } finally { clearTimeout(timer); }
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      j = await r.json();
+      break;
+    } catch (e) {
+      if (signal?.aborted) throw e;
+      last = e;
+    }
+  }
+  if (!j) throw new Error('Could not load peak names (' + (String(last?.message || last).slice(0, 60)) + ').');
+  const out = [];
+  for (const n of j.elements || []) {
+    const t = n.tags || {};
+    let name = t.name;
+    if (name && !LATIN.test(name) && t['name:en']) name = t['name:en'];
+    if (name && Number.isFinite(n.lat) && Number.isFinite(n.lon)) out.push({ name, lat: n.lat, lon: n.lon, ele: parseEle(t.ele) });
+  }
+  return out;
+}
+
+/** Peaks kept for a place; fetched (and kept, if the place is saved) when there are none yet. [] on failure. */
+export async function loadPeaks(place) {
+  const key = `${place.id}/peaks.json`;
+  if (place.id) {
+    const s = await get(key);
+    if (s) try { const a = JSON.parse(typeof s === 'string' ? s : new TextDecoder().decode(s)); if (Array.isArray(a)) return a; } catch { /* refetch */ }
+  }
+  try {
+    const list = await fetchPeaks(place.lat, place.lon, place.reach);
+    if (place.id && !session.has(place.id)) await put(key, JSON.stringify(list));
+    return list;
+  } catch { return []; }
 }
 
 // ------------------------------------------------------------------- storage
@@ -97,7 +153,9 @@ export async function createPlace({ name, lat, lon, eyeM = 1.7, reach = 'normal'
   if (!(Math.abs(lat) <= 80) || !(Math.abs(lon) <= 180)) throw new Error('That position is outside the area the terrain data covers.');
   const spec = terrainSpec(lat, lon, reach);
   let built;
+  const peaksP = fetchPeaks(lat, lon, reach, signal).catch(() => null);   // a peaks failure never fails the place
   try { built = await buildTerrain(spec, (f, m) => progress(0.95 * f, m), signal); } catch (e) { throw readable(e); }
+  const peaks = await Promise.race([peaksP, new Promise(r => setTimeout(r, 1500, null))]);   // never hold the place up for names; loadPeaks gets them later
   progress(0.96, 'Saving…');
   const id = 'p-' + Date.now().toString(36);
   const place = { id, name: name || `${lat.toFixed(4)}, ${lon.toFixed(4)}`, lat, lon, eyeM, reach, built: new Date().toISOString().replace(/\.\d+Z$/, '+00:00') };
@@ -107,6 +165,7 @@ export async function createPlace({ name, lat, lon, eyeM = 1.7, reach = 'normal'
   place.bytes = fineBuf.byteLength + coarseBuf.byteLength + metaBuf.byteLength;
   const terrain = terrainFromPack(meta, fineBuf, coarseBuf);
   let ok = await put(`${id}/dem_fine.bin`, fineBuf) && await put(`${id}/dem_coarse.bin`, coarseBuf) && await put(`${id}/pack.json`, metaBuf);
+  if (ok && peaks) await put(`${id}/peaks.json`, JSON.stringify(peaks));
   if (ok) {
     const list = (await readList()).filter(p => p.id !== id);
     list.unshift(clean(place));

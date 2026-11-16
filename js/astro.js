@@ -1,6 +1,6 @@
 // Sun, moon and Milky Way positions. No DOM. Angles in radians unless the name
 // ends in Deg. Directions are ENU unit vectors [east, north, up].
-import * as A from '../vendor/astronomy.js?v=1116.0444-41cdbb4';
+import * as A from '../vendor/astronomy.js?v=1116.0520-8c43238';
 
 export const Body = A.Body;
 
@@ -29,9 +29,12 @@ export function sunMoon(date, obs) {
   const s = bodyPos(A.Body.Sun, t, obs);
   const m = bodyPos(A.Body.Moon, t, obs);
   const ill = A.Illumination(A.Body.Moon, t);
+  // north pole of each body as an ENU direction, to turn its picture the right way up on the sky
+  const hor = A.Rotation_EQJ_HOR(t, obs);
+  const north = body => { const v = A.RotateVector(hor, A.RotationAxis(body, t).north); return [-v.y, v.x, v.z]; };
   return {
-    sun: { az: s.az, alt: s.alt, dir: s.dir, radius: Math.asin(R_SUN_KM / s.distKm) },
-    moon: { az: m.az, alt: m.alt, dir: m.dir, radius: Math.asin(R_MOON_KM / m.distKm),
+    sun: { az: s.az, alt: s.alt, dir: s.dir, radius: Math.asin(R_SUN_KM / s.distKm), north: north(A.Body.Sun) },
+    moon: { az: m.az, alt: m.alt, dir: m.dir, radius: Math.asin(R_MOON_KM / m.distKm), north: north(A.Body.Moon),
             phaseAngle: ill.phase_angle * D2R, fraction: ill.phase_fraction },
   };
 }
@@ -73,7 +76,7 @@ export function milkyWay() {
 
 const vecEnu = v => [-v.y, v.x, v.z];
 
-// -> {dirs: Float32Array (3 per point, ENU), core: [e, n, u]}
+// -> {dirs: Float32Array (3 per point, ENU), core: [e, n, u], basis}
 // Takes the object returned by milkyWay() (or just its points array; then core is null).
 export function milkyWayAt(mw, date, obs) {
   const points = Array.isArray(mw) ? mw : mw.points;
@@ -85,7 +88,9 @@ export function milkyWayAt(mw, date, obs) {
     dirs[3 * i] = e; dirs[3 * i + 1] = n; dirs[3 * i + 2] = u;
   });
   const core = Array.isArray(mw) || !mw.core ? null : vecEnu(A.RotateVector(m, mw.core.gal));
-  return { dirs, core };
+  // the galactic x, y, z axes as ENU directions: a sky direction d has galactic coordinates (d.gx, d.gy, d.gz)
+  const basis = [[1, 0, 0], [0, 1, 0], [0, 0, 1]].map(a => vecEnu(A.RotateVector(m, new A.Vector(a[0], a[1], a[2], t))));
+  return { dirs, core, basis };
 }
 
 // Sea-level rise and set within the 24 h from dayStart: {rise: Date|null, set: Date|null}
@@ -112,4 +117,21 @@ export function gcAltAz(date, obs) {
   const eq = A.Equator(A.Body.Star1, t, obs, true, true);
   const hor = A.Horizon(t, obs, eq.ra, eq.dec, 'normal');
   return { az: hor.azimuth * D2R, alt: hor.altitude * D2R };
+}
+
+/** Night sky summary for the night that begins on local day dayStart: {fraction, waxing, mwHours, dots 0..5}. */
+export function nightSky(dayStart, obs) {
+  const t0 = +dayStart, mid = new Date(t0 + 24 * 3600e3);
+  const fraction = A.Illumination(A.Body.Moon, toTime(mid)).phase_fraction;
+  const waxing = A.MoonPhase(toTime(mid)) < 180;
+  let w = 0;
+  for (let m = 12 * 60; m < 36 * 60; m += 10) {
+    const d = new Date(t0 + m * 60e3), sun = altAz(A.Body.Sun, d, obs).alt / D2R;
+    const dark = sun < -18 ? 1 : sun < -12 ? 0.5 : 0;
+    if (!dark || gcAltAz(d, obs).alt / D2R <= 5) continue;
+    w += dark * (altAz(A.Body.Moon, d, obs).alt < 0 ? 1 : 1 - 0.85 * fraction);
+  }
+  const mwHours = w * 10 / 60;
+  const dots = mwHours < 0.25 ? 0 : mwHours < 1 ? 1 : mwHours < 2 ? 2 : mwHours < 3.5 ? 3 : mwHours < 5 ? 4 : 5;
+  return { fraction, waxing, mwHours, dots };
 }

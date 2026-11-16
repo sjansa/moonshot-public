@@ -5,12 +5,13 @@
 // A native picker can replace Leaflet: if the Capacitor 'SpotPicker' plugin exists it is used
 // (not in solver mode).
 
-import { whereAmI } from './places.js?v=1116.0444-41cdbb4';
-import * as astro from './astro.js?v=1116.0444-41cdbb4';
-import * as TZ from './tz.js?v=1116.0444-41cdbb4';
-import { tick } from './haptic.js?v=1116.0444-41cdbb4';
-import { fetchElevGrid } from './elev.js?v=1116.0444-41cdbb4';
-import { bodyTrack, solveGrid, solveSpot, elevAt, lonLatToPx, pxToLonLat } from './solver.js?v=1116.0444-41cdbb4';
+import { whereAmI } from './places.js?v=1116.0520-8c43238';
+import * as astro from './astro.js?v=1116.0520-8c43238';
+import * as TZ from './tz.js?v=1116.0520-8c43238';
+import { tick } from './haptic.js?v=1116.0520-8c43238';
+import { makeSkyGlyph } from './skyglyph.js?v=1116.0520-8c43238';
+import { fetchElevGrid } from './elev.js?v=1116.0520-8c43238';
+import { bodyTrack, solveGrid, solveSpot, elevAt, lonLatToPx, pxToLonLat } from './solver.js?v=1116.0520-8c43238';
 
 const LINE_KM = 20;
 let leafletReady = null;
@@ -127,6 +128,8 @@ export async function pickSpot(opts = {}) {
   const prev = el('button', 'mp-btn mp-sq', '‹'), next = el('button', 'mp-btn mp-sq', '›'), day = el('input', 'mp-day'), dl = el('div', 'mp-dl');
   prev.setAttribute('aria-label', 'Previous day'); next.setAttribute('aria-label', 'Next day');
   day.type = 'range'; day.min = '0'; day.max = '365'; day.step = '1'; day.value = '0'; day.setAttribute('aria-label', 'Day');
+  const gl = makeSkyGlyph({ size: 24 }), dt = el('span', '');
+  dl.style.cssText = 'display:flex;align-items:center;justify-content:flex-end;gap:4px'; dl.append(gl.el, dt);
   pr3.append(prev, day, next, dl);
   panel.append(pr1, pr2, pr3);
   foot.append(msg, panel, pos, row2);
@@ -235,12 +238,15 @@ export async function pickSpot(opts = {}) {
 
   const dayLabel = () => {
     const d = dayAt(S.dayIdx);
+    let mc = null; try { mc = map.getCenter(); } catch (e) { /* no view yet */ }
+    const c = S.subject || mc || {}, lat = c.lat ?? opts.lat ?? 0, lon = c.lng ?? c.lon ?? opts.lon ?? 0;
     let t = TZ.format(d, 'date');
-    if (S.body === 'moon') {
-      const f = astro.sunMoon(new Date(+d + 12 * 3600000), astro.observer(S.subject?.lat ?? opts.lat ?? 0, S.subject?.lon ?? opts.lon ?? 0, 0)).moon.fraction;
-      t += `\n${Math.round(f * 100)}% lit`;
-    }
-    dl.textContent = t; dl.style.whiteSpace = 'pre-line';
+    try {
+      const k = astro.nightSky(d, astro.observer(lat, lon, 0));
+      if (S.body === 'moon') t += `\n${Math.round(k.fraction * 100)}% lit`;
+      gl.update(k, { south: lat < 0 });
+    } catch (e) { gl.update(null); }
+    dt.textContent = t; dt.style.whiteSpace = 'pre-line'; dt.style.textAlign = 'right';
   };
 
   const refreshInfo = () => {

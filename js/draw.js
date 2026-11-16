@@ -1,8 +1,10 @@
 // draw.js -- everything painted on the canvas (PLAN 7.2, 7.3). All sizes are device pixels.
-import { skyTAt } from './horizon.js?v=1116.0444-41cdbb4';
-import { screenCamera, cameraGeometry } from './view.js?v=1116.0444-41cdbb4';
-import { format as tzFormat } from './tz.js?v=1116.0444-41cdbb4';
-import { TAU, D2R } from '../core/terrain.js?v=1116.0444-41cdbb4';
+import { skyTAt } from './horizon.js?v=1116.0520-8c43238';
+import { drawPeaks } from './peaks.js?v=1116.0520-8c43238';
+import { screenCamera, cameraGeometry } from './view.js?v=1116.0520-8c43238';
+import { format as tzFormat } from './tz.js?v=1116.0520-8c43238';
+import { TAU, D2R } from '../core/terrain.js?v=1116.0520-8c43238';
+import { art, milkyWayLayer, northTurn } from './skyart.js?v=1116.0520-8c43238';
 
 const clamp01 = x => Math.min(1, Math.max(0, x));
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -93,8 +95,14 @@ function drawSky(ctx, S, cam, sw, sh, k, alpha) {
     const dark = clamp01((-6 - sunAlt) / 12);
     if (dark > 0) {
       const r = pxPer(MW_R_DEG * D2R), sp = getSprite(), d = mwNow.dirs, pts = S.mw.points;
+      const v = S.view, layer = mwNow.basis && milkyWayLayer(cam, sw, sh, mwNow.basis,
+        `${+S.date}|${v.azDeg}|${v.altDeg}|${cam.fn}|${sw}|${sh}|${S.placeSeq}`);
       ctx.globalCompositeOperation = 'lighter';
-      for (let i = 0; i < pts.length; i++) {
+      if (layer) {                                   // the panorama; the dots below are the fallback while it loads
+        ctx.globalAlpha = alpha * dark;
+        ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'low';   // 'high' is very slow at this size
+        ctx.drawImage(layer, 0, 0, sw, sh);
+      } else for (let i = 0; i < pts.length; i++) {
         if (!cam.project(d[3 * i], d[3 * i + 1], d[3 * i + 2], sw, sh, P) || !near(P[0], P[1], r)) continue;
         ctx.globalAlpha = alpha * MW_ALPHA * pts[i].w * dark;
         ctx.drawImage(sp, P[0] - r, P[1] - r, 2 * r, 2 * r);
@@ -140,33 +148,51 @@ function drawSky(ctx, S, cam, sw, sh, k, alpha) {
     ctx.fillText(name, b[0] + 16 * k, b[1]);
   };
 
+  // screen angle (atan2) of the sky direction `to` as seen from the body at direction `c` (screen point P)
+  const angleTo = (c, to) => {
+    const dot = to[0] * c[0] + to[1] * c[1] + to[2] * c[2];
+    const T = [to[0] - dot * c[0], to[1] - dot * c[1], to[2] - dot * c[2]], tl = Math.hypot(...T) || 1;
+    const q = [c[0] + 0.01 * T[0] / tl, c[1] + 0.01 * T[1] / tl, c[2] + 0.01 * T[2] / tl], ql = Math.hypot(...q);
+    return cam.project(q[0] / ql, q[1] / ql, q[2] / ql, sw, sh, P2) ? [P2[0] - P[0], P2[1] - P[1]] : null;
+  };
+  const PIC_MIN = 5 * k;                               // below this radius a picture shows nothing; use the plain disc
+
   const sun = sm.sun;
   if (show.sun && cam.project(sun.dir[0], sun.dir[1], sun.dir[2], sw, sh, P)) {
     const r = pxPer(sun.radius), gr = Math.max(r * 4, 14 * k);
     const g = ctx.createRadialGradient(P[0], P[1], r * 0.8, P[0], P[1], gr);
     g.addColorStop(0, 'rgba(255,215,106,0.55)'); g.addColorStop(1, 'rgba(255,215,106,0)');
     ctx.fillStyle = g; ctx.beginPath(); ctx.arc(P[0], P[1], gr, 0, TAU); ctx.fill();
-    ctx.fillStyle = '#ffd76a'; ctx.beginPath(); ctx.arc(P[0], P[1], Math.max(r, 0.8 * k), 0, TAU); ctx.fill();
+    const pic = r >= PIC_MIN && art('sun'), up = pic && sun.north && angleTo(sun.dir, sun.north);
+    if (pic) {
+      ctx.save();
+      ctx.translate(P[0], P[1]); ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.clip();
+      if (up) ctx.rotate(northTurn(up[0], up[1]));
+      ctx.imageSmoothingQuality = 'high'; ctx.drawImage(pic, -r * 1.004, -r * 1.004, r * 2.008, r * 2.008);
+      ctx.restore();
+    } else { ctx.fillStyle = '#ffd76a'; ctx.beginPath(); ctx.arc(P[0], P[1], Math.max(r, 0.8 * k), 0, TAU); ctx.fill(); }
     marker(P, 'Sun', r);
   }
 
   const moon = sm.moon;
   if (show.moon && cam.project(moon.dir[0], moon.dir[1], moon.dir[2], sw, sh, P)) {
     const r = pxPer(moon.radius), md = moon.dir, sd = sun.dir;
-    const dot = sd[0] * md[0] + sd[1] * md[1] + sd[2] * md[2];
-    let T = [sd[0] - dot * md[0], sd[1] - dot * md[1], sd[2] - dot * md[2]];
-    const tl = Math.hypot(...T) || 1;
-    const q = [md[0] + 0.01 * T[0] / tl, md[1] + 0.01 * T[1] / tl, md[2] + 0.01 * T[2] / tl];
-    const ql = Math.hypot(...q);
-    const theta = cam.project(q[0] / ql, q[1] / ql, q[2] / ql, sw, sh, P2) ? Math.atan2(P2[1] - P[1], P2[0] - P[0]) : 0;
+    const toSun = angleTo(md, sd), theta = toSun ? Math.atan2(toSun[1], toSun[0]) : 0;
     const rr = Math.max(r, 0.8 * k);
+    const pic = r >= PIC_MIN && art('moon'), up = pic && moon.north && angleTo(md, moon.north);
+    const night = clamp01((-2 - sunAlt) / 6);          // by day the unlit part is lost in the sky
     ctx.save();
     ctx.translate(P[0], P[1]); ctx.rotate(theta);
-    ctx.fillStyle = '#2a2f36'; ctx.beginPath(); ctx.arc(0, 0, rr, 0, TAU); ctx.fill();
-    ctx.fillStyle = '#f4f1e6'; ctx.beginPath();
+    ctx.fillStyle = pic ? `rgba(22,26,34,${0.25 + 0.6 * night})` : '#2a2f36';
+    ctx.beginPath(); ctx.arc(0, 0, rr, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#f4f1e6'; ctx.beginPath();                    // the lit part, towards the sun
     ctx.arc(0, 0, rr, -Math.PI / 2, Math.PI / 2);
     ctx.ellipse(0, 0, rr * Math.abs(Math.cos(moon.phaseAngle)), rr, 0, Math.PI / 2, -Math.PI / 2, moon.phaseAngle > Math.PI / 2);
-    ctx.fill();
+    if (pic) {                                                     // the picture, north pole turned to where it is on the sky
+      ctx.clip();
+      ctx.rotate(-theta + (up ? northTurn(up[0], up[1]) : 0));
+      ctx.imageSmoothingQuality = 'high'; ctx.drawImage(pic, -rr * 1.004, -rr * 1.004, rr * 2.008, rr * 2.008);
+    } else ctx.fill();
     ctx.restore();
     marker(P, 'Moon', r);
   }
@@ -300,6 +326,18 @@ export function draw(ctx, S, W, H, k = 1) {
   ctx.lineJoin = 'round';
   for (const [color, lw] of [['rgba(8,16,22,0.55)', 4.2], ['#ffffff', 2]]) {
     ctx.strokeStyle = color; ctx.lineWidth = lw * k; ctx.stroke(edge.line);
+  }
+
+  if (S.show.peaks && S.peaks?.length) drawPeaks(ctx, S, cam, W, H, k);
+  if (S.subject) {                                   // the subject chosen in the solver: a red mark above its top
+    const P = [0, 0];
+    if (cam.project(...S.subject.dir, W, H, P)) {
+      ctx.save();
+      ctx.fillStyle = '#ff5a4a'; ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 1 * k;
+      ctx.beginPath(); ctx.moveTo(P[0], P[1] - 3 * k); ctx.lineTo(P[0] - 6 * k, P[1] - 15 * k); ctx.lineTo(P[0] + 6 * k, P[1] - 15 * k); ctx.closePath();
+      ctx.fill(); ctx.stroke();
+      ctx.restore();
+    }
   }
 
   // 6 scales
