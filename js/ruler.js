@@ -1,4 +1,5 @@
-// Time ruler: a 64 px strip with a fixed center needle; the scale slides under it.
+// Time ruler: a 96 px strip, two rows. Top row: buttons and the time readout (a
+// date button). Below: the sliding scale with a fixed center needle.
 // No imports. See PLAN.md section 8.
 
 export const SPANS = [2 * 3600e3, 12 * 3600e3, 3 * 86400e3, 30 * 86400e3];
@@ -64,7 +65,7 @@ function injectStyle() {
 .rl-root * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 .rl-canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: ew-resize; outline: none; display: block; }
 .rl-canvas:focus-visible { outline: 2px solid var(--go, #3fb6ff); outline-offset: -2px; }
-.rl-grp { position: absolute; top: 50%; transform: translateY(-50%); display: flex; gap: 2px; align-items: center; margin-top: 1px; }
+.rl-grp { position: absolute; top: 2px; display: flex; gap: 3px; align-items: center; }
 .rl-l { left: calc(env(safe-area-inset-left, 0px) + 4px); }
 .rl-r { right: calc(env(safe-area-inset-right, 0px) + 4px); }
 .rl-btn { position: relative; min-width: 44px; height: 44px; padding: 0 6px; border: 1px solid var(--line, rgba(255,255,255,.16)); border-radius: 12px;
@@ -75,13 +76,17 @@ function injectStyle() {
 .rl-btn:focus-visible { outline: 2px solid var(--go, #3fb6ff); outline-offset: 2px; }
 .rl-span { color: var(--go, #3fb6ff); }
 .rl-step { font-size: 24px; font-weight: 500; letter-spacing: 0; }
-.rl-cal svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+.rl-read { position: absolute; top: 2px; left: 50%; transform: translateX(-50%); height: 44px; min-width: 96px; padding: 0 10px; border-radius: 12px; border: 1px solid var(--line, rgba(255,255,255,.16));
+  background: rgba(8,16,22,.78); color: var(--text, #f2f6f8); display: grid; place-content: center; text-align: center; gap: 1px; overflow: hidden; cursor: pointer; }
+.rl-read:focus-within { outline: 2px solid var(--go, #3fb6ff); outline-offset: 2px; }
+.rl-rd { font: 500 11px/1 var(--body, system-ui, sans-serif); color: #c9d6dd; white-space: nowrap; pointer-events: none; }
+.rl-rt { font: 700 19px/1 var(--display, "Barlow Condensed", "Helvetica Neue", Arial, sans-serif); letter-spacing: .04em; white-space: nowrap; pointer-events: none; }
 .rl-date { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; padding: 0; margin: 0; font-size: 16px; }
 `;
   document.head.appendChild(s);
 }
 
-const CAL_SVG = '<svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>';
+const ROW = 48;   // height of the top row (buttons, readout); the scale is below it
 
 // ---------- component ----------
 
@@ -95,7 +100,7 @@ export class Ruler {
     this._bands = null;   // {center, spanIdx, t0, step, alt: Float32Array}
     this._marks = null;   // {center, spanIdx, list}
     this._raf = 0;
-    this._w = 0; this._h = 64; this._dpr = 1;
+    this._w = 0; this._h = 96; this._dpr = 1;
     this._drag = null;
     this._rep = null;
 
@@ -120,14 +125,15 @@ export class Ruler {
     this.bSpan = mk('rl-span', SPAN_LABELS[this._spanIdx], 'Change time span');
     this.bMinus = mk('rl-step', '−', 'Back one minute');
     this.bPlus = mk('rl-step', '+', 'Forward one minute');
-    this.bCal = mk('rl-cal', '', 'Pick date');
-    this.bCal.innerHTML = CAL_SVG;
+    this.read = document.createElement('div'); this.read.className = 'rl-read';
+    this.rd = document.createElement('span'); this.rd.className = 'rl-rd';
+    this.rt = document.createElement('span'); this.rt.className = 'rl-rt';
     this.dateIn = document.createElement('input');
-    this.dateIn.type = 'date'; this.dateIn.className = 'rl-date'; this.dateIn.setAttribute('aria-label', 'Date');
-    this.bCal.appendChild(this.dateIn);
+    this.dateIn.type = 'date'; this.dateIn.className = 'rl-date'; this.dateIn.setAttribute('aria-label', 'Pick date');
+    this.read.append(this.rd, this.rt, this.dateIn);
     left.append(this.bNow, this.bSpan);
-    right.append(this.bMinus, this.bPlus, this.bCal);
-    container.append(left, right);
+    right.append(this.bMinus, this.bPlus);
+    container.append(left, right, this.read);
     this._left = left; this._right = right;
 
     this.bNow.addEventListener('click', () => this._user(Date.now()));
@@ -198,7 +204,7 @@ export class Ruler {
   invalidate() { this._bands = null; this._marks = null; this._syncDate(); this._schedule(); }
 
   resize() {
-    const w = this.el.clientWidth || 1, h = this.el.clientHeight || 64;
+    const w = this.el.clientWidth || 1, h = this.el.clientHeight || 96;
     const dpr = (typeof devicePixelRatio === 'number' && devicePixelRatio) || 1;
     if (w === this._w && h === this._h && dpr === this._dpr && this.cv.width) { return; }
     this._w = w; this._h = h; this._dpr = dpr;
@@ -237,7 +243,9 @@ export class Ruler {
 
   _syncDate() {
     try { const v = this.o.dateInputValue(this.time); if (v && this.dateIn.value !== v) this.dateIn.value = v; } catch (e) { /* ignore */ }
-    this.cv.setAttribute('aria-valuetext', this.o.format(this.time, 'date') + ' ' + this.o.format(this.time, 'time'));
+    const ds = this.o.format(this.time, 'date'), ts = this.o.format(this.time, 'time');
+    this.rd.textContent = ds; this.rt.textContent = ts;
+    this.cv.setAttribute('aria-valuetext', ds + ' ' + ts);
   }
 
   _schedule() {
@@ -308,12 +316,13 @@ export class Ruler {
       const x = this._xOf(b.t0 + i * b.step, t) - pxStep / 2;
       if (x > W || x + pxStep < 0) continue;
       ctx.fillStyle = bandColor(b.alt[i]);
-      ctx.fillRect(Math.floor(x), 0, Math.ceil(pxStep) + 1, H);
+      ctx.fillRect(Math.floor(x), ROW, Math.ceil(pxStep) + 1, H - ROW);
     }
     // darken for legibility
-    const g = ctx.createLinearGradient(0, 0, 0, H);
+    const g = ctx.createLinearGradient(0, ROW, 0, H);
     g.addColorStop(0, 'rgba(6,12,18,0.30)'); g.addColorStop(1, 'rgba(6,12,18,0.55)');
-    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = g; ctx.fillRect(0, ROW, W, H - ROW);
+    ctx.fillStyle = 'rgba(255,255,255,0.14)'; ctx.fillRect(0, ROW, W, 1);
 
     // ticks and labels
     const tf = t - span / 2 - span * 0.1, tt = t + span / 2 + span * 0.1;
@@ -342,13 +351,13 @@ export class Ruler {
     for (let mi = 0; mi < marks.length; mi++) {
       const m = marks[mi];
       ctx.fillStyle = m.color || '#f4f1e6';
-      ctx.beginPath(); ctx.moveTo(m.x - 4.5, 0); ctx.lineTo(m.x + 4.5, 0); ctx.lineTo(m.x, 7); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(m.x - 4.5, ROW + 1); ctx.lineTo(m.x + 4.5, ROW + 1); ctx.lineTo(m.x, ROW + 8); ctx.closePath(); ctx.fill();
       if (m.label) {
         const w = ctx.measureText(m.label).width;
         const room = mi + 1 >= marks.length || marks[mi + 1].x - m.x > w + 10;
         if (room && m.x + 7 > lastEnd + 4) {
           ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 3;
-          ctx.fillText(m.label, m.x + 6, 9);
+          ctx.fillText(m.label, m.x + 6, ROW + 10);
           ctx.shadowBlur = 0;
           lastEnd = m.x + 6 + w;
         }
@@ -359,36 +368,6 @@ export class Ruler {
     const cx = Math.round(W / 2) + 0.5;
     ctx.strokeStyle = getComputedStyle(this.el).getPropertyValue('--go').trim() || '#3fb6ff';
     ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(cx, 24); ctx.lineTo(cx, H); ctx.stroke();
-
-    // selected time readout
-    const d = new Date(t);
-    const dateS = this.o.format(d, 'date'), timeS = this.o.format(d, 'time');
-    const half = Math.min(W / 2 - (this._left.offsetLeft + this._left.offsetWidth), this._right.offsetLeft - W / 2);
-    const avail = Math.max(50, 2 * half - 20);
-    ctx.fillStyle = '#f2f6f8'; ctx.textAlign = 'center';
-    ctx.font = font(15, 700);
-    const oneW = ctx.measureText(dateS + '  ' + timeS).width;
-    ctx.strokeStyle = 'rgba(255,255,255,0.22)'; ctx.lineWidth = 1;
-    if (oneW <= avail) {          // one line: "Tue 24 Nov  17:30"
-      const pw = oneW + 18, ph = 22, py = 12;
-      ctx.fillStyle = 'rgba(8,16,22,0.78)';
-      ctx.beginPath(); ctx.roundRect(W / 2 - pw / 2, py, pw, ph, 11); ctx.fill(); ctx.stroke();
-      ctx.fillStyle = '#f2f6f8';
-      ctx.fillText(dateS + '  ' + timeS, W / 2, py + 16);
-    } else {                      // two lines when the buttons leave little room
-      let dpx = 11;
-      ctx.font = font(dpx, 600);
-      const dw = ctx.measureText(dateS).width;
-      if (dw > avail) { dpx = Math.max(8, Math.floor(dpx * avail / dw)); }
-      ctx.font = font(18, 700);
-      const tw = ctx.measureText(timeS).width;
-      ctx.font = font(dpx, 600);
-      const pw = Math.max(ctx.measureText(dateS).width, tw) + 16, ph = 34, py = 2;
-      ctx.fillStyle = 'rgba(8,16,22,0.78)';
-      ctx.beginPath(); ctx.roundRect(W / 2 - pw / 2, py, pw, ph, 10); ctx.fill(); ctx.stroke();
-      ctx.fillStyle = '#c9d6dd'; ctx.fillText(dateS, W / 2, py + 12);
-      ctx.fillStyle = '#f2f6f8'; ctx.font = font(18, 700); ctx.fillText(timeS, W / 2, py + 29);
-    }
+    ctx.beginPath(); ctx.moveTo(cx, ROW - 3); ctx.lineTo(cx, H); ctx.stroke();
   }
 }

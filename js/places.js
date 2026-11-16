@@ -7,8 +7,8 @@
 //
 // Nothing here touches browser globals at import time (tests run it in Node).
 
-import { buildTerrain, estimate, expandBbox, DEM_UNIT } from '../core/build.js?v=1115.1805-901b992';
-import { Grid, Terrain } from '../core/terrain.js?v=1115.1805-901b992';
+import { buildTerrain, estimate, expandBbox, DEM_UNIT } from '../core/build.js?v=1115.1822-4403c80';
+import { Grid, Terrain } from '../core/terrain.js?v=1115.1822-4403c80';
 
 export const REACH = { normal: { km: 60, coarseRes: 60 }, far: { km: 120, coarseRes: 120 } };
 export const FINE_KM = 8, FINE_RES = 10;

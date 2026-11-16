@@ -1,5 +1,18 @@
 // horizon.js -- skyline of a place and terrain rise/set. No DOM.
-import { buildPano, chainCrests, TAU } from '../core/terrain.js?v=1115.1805-901b992';
+import { buildPano, chainCrests, TAU } from '../core/terrain.js?v=1115.1822-4403c80';
+
+// Interior crests that stand less than this far above or below eye level are
+// ground ripple (a field's swell, a levee, sampling noise at the edge of the
+// fine grid), not ridges. On gentle ground a 15 m swell 1 km away hides the
+// whole plain behind it, so it chains into a long, straight line that reads as
+// an artifact in the picture. Real ridgelines stand hundreds of meters up.
+export const MIN_RIDGE_M = 30;
+
+/** Median height of a chain's crest points relative to eye level, meters (absolute value). */
+function ridgeHeight(r) {
+  const v = Array.from(r.t, (t, i) => Math.abs(t * r.d[i])).sort((a, b) => a - b);
+  return v[v.length >> 1];
+}
 
 /**
  * Build the horizon for a place. Keeps only what is needed so the big pano
@@ -8,7 +21,7 @@ import { buildPano, chainCrests, TAU } from '../core/terrain.js?v=1115.1805-901b
  */
 export function makeHorizon(terrain, lat, lon, eyeM = 1.7, maxDist = 60000) {
   const pano = buildPano(terrain, lat, lon, { eye: eyeM, maxDist });
-  const ridges = chainCrests(pano).map(r => ({ cols: r.cols, t: r.t, d: r.d }));
+  const ridges = chainCrests(pano).filter(r => ridgeHeight(r) >= MIN_RIDGE_M).map(r => ({ cols: r.cols, t: r.t, d: r.d }));
   return { lat, lon, hEye: pano.hEye, na: pano.na, skyT: pano.skyT, skyD: pano.skyD, ridges };
 }
 
@@ -31,12 +44,12 @@ export function hidden(h, az, alt) {
 
 /**
  * Times in the 24 h from dayStart (Date) when a body clears or drops behind the
- * terrain. positionAt(date) -> {az, alt} radians.
+ * terrain. positionAt(date) -> {az, alt} radians. opts: {stepMs = 120000, hours = 24}.
  * -> [{date: Date, kind: 'clears' | 'drops'}]
  */
-export function terrainEvents(h, positionAt, dayStart) {
+export function terrainEvents(h, positionAt, dayStart, opts = {}) {
   const f = d => { const p = positionAt(d); return p.alt - Math.atan(skyTAt(h, p.az)); };
-  const t0 = dayStart.getTime(), step = 120000, n = 720;
+  const t0 = dayStart.getTime(), step = opts.stepMs || 120000, n = Math.round((opts.hours || 24) * 3600000 / step);
   const out = [];
   let prevT = t0, prev = f(new Date(prevT));
   for (let i = 1; i <= n; i++) {

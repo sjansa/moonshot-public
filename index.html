@@ -8,7 +8,9 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0c1a22">
 <title>Moonshot</title>
-<link rel="icon" href="data:,">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap">
 <style>
   :root {
@@ -24,17 +26,20 @@
   [hidden] { display: none !important; }
   #stage, #stage canvas { position: fixed; inset: 0; width: 100%; height: 100%; touch-action: none; -webkit-user-select: none; user-select: none; }
 
-  #top { position: fixed; left: 0; right: 0; top: 0; padding: calc(var(--st) + 10px) calc(var(--sr) + 12px) 0 calc(var(--sl) + 12px); display: flex; gap: 8px; align-items: flex-start; pointer-events: none; }
-  .chip .ver { float: right; margin-left: 10px; opacity: 0.55; font-weight: 500; font-size: 11px; letter-spacing: 0; }
+  #top { position: fixed; left: 0; right: 0; top: 0; padding: calc(var(--st) + 10px) calc(var(--sr) + 12px) 0 calc(var(--sl) + 12px); display: flex; flex-direction: column; gap: 5px; align-items: stretch; pointer-events: none; }
+  #lines { border-radius: 14px; padding: 5px 10px; font: 500 12px/1.3 var(--body); letter-spacing: 0; align-self: flex-start; max-width: 100%; }
+  #lines .ln { padding: 1px 0; }
+  #lines .ln b { font: 700 12px var(--display); letter-spacing: 0.05em; text-transform: uppercase; margin-right: 7px; }
+  #lines .ln i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 0; }
   .chip { background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; font: 600 14px/1.2 var(--display); letter-spacing: 0.04em; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
-  #status { flex: 1; min-width: 0; border-radius: 14px; font-family: var(--body); font-weight: 500; font-size: 13px; letter-spacing: 0; }
+  #status { min-width: 0; align-self: flex-start; max-width: 100%; border-radius: 14px; font-family: var(--body); font-weight: 500; font-size: 13px; letter-spacing: 0; }
   #status b { font: 700 14px var(--display); letter-spacing: 0.06em; text-transform: uppercase; margin-right: 8px; }
 
   button { font: inherit; color: inherit; border: 0; cursor: pointer; }
   button:focus-visible { outline: 2px solid var(--go); outline-offset: 2px; }
 
-  /* time ruler strip (phase 4 fills it), directly above the dock */
-  #ruler { position: fixed; left: calc(var(--sl) + 8px); right: calc(var(--sr) + 8px); height: 64px; bottom: calc(var(--sb) + 84px); touch-action: none; }
+  /* time ruler: two rows (buttons and readout above, sliding scale below), directly above the dock */
+  #ruler { position: fixed; left: calc(var(--sl) + 8px); right: calc(var(--sr) + 8px); height: 96px; bottom: calc(var(--sb) + 84px); touch-action: none; border-radius: 16px; border: 1px solid var(--line); }
 
   #bar { position: fixed; left: 50%; bottom: calc(var(--sb) + 10px); transform: translateX(-50%); display: flex; gap: 2px; padding: 5px; background: var(--panel); border: 1px solid var(--line); border-radius: 22px; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
   .tog { background: none; border-radius: 17px; min-width: 58px; min-height: 54px; padding: 6px 6px 5px; display: grid; justify-items: center; align-content: center; gap: 3px; font: 600 12px/1 var(--body); color: var(--dim); white-space: nowrap; }
@@ -45,20 +50,78 @@
   .tog[data-k="moon"][aria-pressed="true"] svg { stroke: #dfe8ff; }
   #more { border-left: 1px solid var(--line); border-radius: 0 17px 17px 0; margin-left: 3px; padding-left: 9px; }
 
-  /* bottom sheet (later phases fill it) */
-  .sheet { position: fixed; left: 8px; right: 8px; bottom: calc(var(--sb) + 8px); max-height: 46%; display: flex; flex-direction: column; background: rgba(13, 28, 37, 0.86); border: 1px solid var(--line); border-radius: 22px; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); overflow: hidden; }
+  /* Menu sheet: short and see-through so the change you make is visible behind it. */
+  .sheet { position: fixed; left: 8px; right: 8px; bottom: calc(var(--sb) + 8px); height: 46%; display: flex; flex-direction: column; background: rgba(13, 28, 37, 0.86); border: 1px solid var(--line); border-radius: 22px; backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); box-shadow: 0 10px 40px rgba(0, 0, 0, 0.45); overflow: hidden; }
   .sheet > header { display: flex; align-items: center; gap: 6px; padding: 8px 8px 8px 10px; border-bottom: 1px solid var(--line); flex: none; }
   .tabs { flex: 1; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 3px; background: rgba(0, 0, 0, 0.28); border-radius: 13px; padding: 3px; }
-  .tabs button { background: none; border-radius: 10px; min-height: 44px; font: 600 14px var(--body); color: var(--dim); }
+  .tabs button { background: none; border-radius: 10px; min-height: 44px; font: 600 14px var(--body); color: var(--dim); padding: 0 2px; }
   .tabs button[aria-selected="true"] { background: rgba(255, 255, 255, 0.16); color: #fff; }
-  .pane { overflow: auto; -webkit-overflow-scrolling: touch; padding: 4px 14px 12px; }
+  .x { background: rgba(255, 255, 255, 0.1); border-radius: 50%; width: 44px; height: 44px; flex: none; display: grid; place-items: center; color: var(--text); }
+  .x svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; fill: none; }
+  .pane { overflow: auto; -webkit-overflow-scrolling: touch; padding: 4px 14px 12px; display: grid; gap: 2px; align-content: start; }
+  .row { display: grid; gap: 6px; padding: 9px 2px; }
+  .row label, .legend { color: var(--dim); font-size: 13px; }
+  .row label span { color: var(--text); font-weight: 600; float: right; }
+  .legend { margin: 8px 2px 2px; }
+  .seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .seg.two { grid-template-columns: repeat(2, 1fr); }
+  .seg button, .btn { background: rgba(255, 255, 255, 0.09); border: 1px solid var(--line); border-radius: 12px; min-height: 46px; padding: 8px; font: 600 15px var(--body); }
+  .seg button[aria-pressed="true"], .chips button[aria-pressed="true"] { background: var(--go); color: #06202e; border-color: var(--go); }
+  .btn.go { background: var(--go); color: #06202e; border-color: var(--go); }
+  .btn.danger { color: #ff8f86; }
+  .btn:disabled { opacity: 0.4; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chips button { min-width: 48px; min-height: 44px; border-radius: 12px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.09); font: 600 14px var(--body); padding: 0 8px; }
+  select { width: 100%; min-height: 48px; background: rgba(255, 255, 255, 0.09); color: var(--text); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; font: 500 16px var(--body); }
+  select option { color: #000; }
+  .pane input[type="text"], .pane input[type="number"] { width: 100%; min-height: 44px; background: rgba(255, 255, 255, 0.09); border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; color: var(--text); font: 16px var(--body); }
+  .sw { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 50px; padding: 0 2px; font-size: 16px; color: var(--text); border-bottom: 1px solid rgba(255, 255, 255, 0.07); }
+  .sw input { appearance: none; -webkit-appearance: none; flex: none; width: 52px; height: 32px; border-radius: 16px; background: rgba(255, 255, 255, 0.2); position: relative; margin: 0; transition: background 0.15s; }
+  .sw input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 26px; height: 26px; border-radius: 50%; background: #fff; transition: transform 0.15s; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4); }
+  .sw input:checked { background: var(--go); }
+  .sw input:checked::after { transform: translateX(20px); }
+  @media (prefers-reduced-motion: reduce) { .sw input, .sw input::after { transition: none; } }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 4px 0; }
+  .zrow { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+  .prompt { background: rgba(232, 198, 106, 0.16); border: 1px solid rgba(232, 198, 106, 0.5); border-radius: 12px; padding: 8px 12px; margin: 6px 0; font-weight: 500; }
+  .cur { padding: 6px 2px; } .cur small, .est { color: var(--dim); font-size: 12px; }
+  .est { padding: 2px 2px 6px; }
+  .msg { min-height: 0; font-size: 13px; color: var(--dim); padding: 0 2px; } .msg:empty { display: none; } .msg.bad { color: #ff8f86; }
+  progress { width: 100%; height: 10px; accent-color: var(--go); }
+  .area { display: grid; grid-template-columns: 1fr auto; gap: 6px; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--line); }
+  .area .sel { background: none; text-align: left; min-height: 44px; padding: 2px 4px; display: grid; }
+  .area .sel small { color: var(--dim); font-size: 12px; }
+  .area .btn { min-height: 44px; min-width: 76px; padding: 4px 10px; }
+  .area .tag { color: var(--go); font-weight: 600; font-size: 13px; padding-right: 8px; }
+  details.info { border-top: 1px solid var(--line); }
+  details.info summary { min-height: 44px; display: flex; align-items: center; justify-content: space-between; font: 600 15px var(--body); cursor: pointer; list-style: none; }
+  details.info summary::-webkit-details-marker { display: none; }
+  details.info summary::after { content: "+"; font-size: 20px; color: var(--dim); }
+  details.info[open] summary::after { content: "\2013"; }
+  details.info p, .ver-line { margin: 0 2px 9px; font: 400 13px/1.45 var(--body); color: var(--dim); }
+  details.info p b { color: var(--text); }
+  .ver { font-weight: 600; color: var(--text); }
+  /* sheet open: the dock and the ruler step aside (kept in layout so the frame does not jump) */
+  body.sheet-open #bar, body.sheet-open #ruler { visibility: hidden; }
+
+  /* on its side: dock down the right edge, ruler beside it, sheet on the right */
+  @media (orientation: landscape) and (max-height: 520px) {
+    #bar { left: auto; right: calc(var(--sr) + 8px); bottom: auto; top: 50%; transform: translateY(-50%); flex-direction: column; }
+    .tog { min-height: 46px; min-width: 62px; padding-top: 3px; padding-bottom: 3px; }
+    #more { border-left: 0; border-top: 1px solid var(--line); border-radius: 0 0 17px 17px; margin: 3px 0 0; padding: 4px 6px 3px; }
+    #ruler { right: calc(var(--sr) + 86px); bottom: calc(var(--sb) + 8px); }
+    #top { padding-right: calc(var(--sr) + 86px); }
+    #lines { max-width: min(520px, 100%); }
+    .sheet { left: auto; right: calc(var(--sr) + 8px); top: calc(var(--st) + 8px); bottom: calc(var(--sb) + 8px); width: min(380px, 52vw); height: auto; }
+  }
 </style>
 </head>
 <body>
 <div id="stage"><canvas id="cv"></canvas></div>
 
 <div id="top">
-  <div id="status" class="chip"><b id="statName">Moonshot</b><span id="statTime"></span><span class="ver">1115.1805-901b992</span></div>
+  <div id="status" class="chip"><b id="statName">Moonshot</b><span id="statTime"></span></div>
+  <div id="lines" class="chip" hidden></div>
 </div>
 
 <div id="ruler"></div>
@@ -72,6 +135,6 @@
   <button class="tog" id="more" data-k="menu" aria-pressed="false" aria-label="Menu"><svg viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>Menu</button>
 </nav>
 
-<script type="module" src="js/main.js?v=1115.1805-901b992"></script>
+<script type="module" src="js/main.js?v=1115.1822-4403c80"></script>
 </body>
 </html>

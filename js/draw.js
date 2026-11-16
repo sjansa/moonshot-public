@@ -1,7 +1,8 @@
 // draw.js -- everything painted on the canvas (PLAN 7.2, 7.3). All sizes are device pixels.
-import { skyTAt } from './horizon.js?v=1115.1805-901b992';
-import { screenCamera } from './view.js?v=1115.1805-901b992';
-import { TAU, D2R } from '../core/terrain.js?v=1115.1805-901b992';
+import { skyTAt } from './horizon.js?v=1115.1822-4403c80';
+import { screenCamera, cameraGeometry } from './view.js?v=1115.1822-4403c80';
+import { format as tzFormat } from './tz.js?v=1115.1822-4403c80';
+import { TAU, D2R } from '../core/terrain.js?v=1115.1822-4403c80';
 
 const clamp01 = x => Math.min(1, Math.max(0, x));
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -22,14 +23,17 @@ export function skyColors(sunAltDeg) {
   return [0, 1].map(k => mix(SKY[i][k], SKY[i + 1][k], f));
 }
 
-// soft round sprite for the Milky Way, built once
+// Soft round sprite for the Milky Way, built once. A Gaussian falloff (sigma = a third of the
+// radius, so the edge is at 3 sigma and already ~0) lets neighbors on the 3 degree grid blend
+// into a smooth band; the sprite is drawn with a radius of MW_R_DEG.
+const MW_R_DEG = 7.5, MW_ALPHA = 0.11;
 let sprite = null;
 function getSprite() {
   if (sprite) return sprite;
-  const c = document.createElement('canvas'); c.width = c.height = 64;
-  const g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
-  for (let i = 0; i <= 10; i++) { const t = i / 10; gr.addColorStop(t, `rgba(215,225,255,${Math.exp(-2 * t * t) * (1 - t ** 4)})`); }   // gaussian: no lattice where sprites overlap
-  g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+  const n = 128, c = document.createElement('canvas'); c.width = c.height = n;
+  const g = c.getContext('2d'), gr = g.createRadialGradient(n / 2, n / 2, 0, n / 2, n / 2, n / 2);
+  for (let i = 0; i <= 24; i++) { const t = i / 24; gr.addColorStop(t, `rgba(215,225,255,${Math.exp(-4.5 * t * t) * (1 - t ** 6)})`); }
+  g.fillStyle = gr; g.fillRect(0, 0, n, n);
   return (sprite = c);
 }
 
@@ -88,11 +92,11 @@ function drawSky(ctx, S, cam, sw, sh, k, alpha) {
   if (show.milkyWay && mwNow) {
     const dark = clamp01((-6 - sunAlt) / 12);
     if (dark > 0) {
-      const r = pxPer(3.5 * D2R), sp = getSprite(), d = mwNow.dirs, pts = S.mw.points;
+      const r = pxPer(MW_R_DEG * D2R), sp = getSprite(), d = mwNow.dirs, pts = S.mw.points;
       ctx.globalCompositeOperation = 'lighter';
       for (let i = 0; i < pts.length; i++) {
         if (!cam.project(d[3 * i], d[3 * i + 1], d[3 * i + 2], sw, sh, P) || !near(P[0], P[1], r)) continue;
-        ctx.globalAlpha = alpha * 0.10 * pts[i].w * dark;
+        ctx.globalAlpha = alpha * MW_ALPHA * pts[i].w * dark;
         ctx.drawImage(sp, P[0] - r, P[1] - r, 2 * r, 2 * r);
       }
       ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = alpha;
@@ -119,9 +123,9 @@ function drawSky(ctx, S, cam, sw, sh, k, alpha) {
       ctx.stroke();
       ctx.font = `500 ${11 * k}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
       for (const p of pts) {
-        if (p.date.getMinutes() !== 0 || !cam.project(p.dir[0], p.dir[1], p.dir[2], sw, sh, P) || !near(P[0], P[1], 0)) continue;
+        if (!tzFormat(p.date, 'time').endsWith(':00') || !cam.project(p.dir[0], p.dir[1], p.dir[2], sw, sh, P) || !near(P[0], P[1], 0)) continue;
         ctx.beginPath(); ctx.arc(P[0], P[1], 2.6 * k, 0, TAU); ctx.fill();
-        ctx.fillText(String(p.date.getHours()).padStart(2, '0'), P[0], P[1] - 5 * k);
+        ctx.fillText(tzFormat(p.date, 'hour'), P[0], P[1] - 5 * k);
       }
     }
     ctx.globalAlpha = alpha;
@@ -201,9 +205,54 @@ function drawScales(ctx, S, cam, sw, sh, k, edge) {
   ctx.restore();
 }
 
+const deg = x => `${x < 10 ? x.toFixed(2) : x.toFixed(1)}°`;
+
+/** Camera mode: darkened surround, frame outline, optional thirds, caption (PLAN 9). */
+function drawFrame(ctx, S, geo, sw, sh, k) {
+  const { x, y, w, h } = geo.rect;
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  const p = new Path2D(); p.rect(0, 0, sw, sh); p.rect(x, y, w, h);
+  ctx.fill(p, 'evenodd');
+  if (S.show.thirds) {
+    ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.lineWidth = 1 * k;
+    ctx.beginPath();
+    for (let i = 1; i < 3; i++) { ctx.moveTo(x + w * i / 3, y); ctx.lineTo(x + w * i / 3, y + h); ctx.moveTo(x, y + h * i / 3); ctx.lineTo(x + w, y + h * i / 3); }
+    ctx.stroke();
+  }
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 1.5 * k; ctx.strokeRect(x, y, w, h);
+  const cap = `${geo.sensor.name} \u00b7 ${S.camera.focal} mm \u00b7 ${deg(geo.fovW)} \u00d7 ${deg(geo.fovH)}`;
+  ctx.font = `600 ${12 * k}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.shadowColor = 'rgba(0,0,0,0.9)'; ctx.shadowBlur = 4 * k;
+  ctx.fillStyle = '#fff'; ctx.fillText(cap, sw / 2, y + h + 6 * k);
+  ctx.restore();
+}
+
+/** A small cross at the screen center with the azimuth and altitude it points at. */
+function drawAim(ctx, S, sw, sh, k, geo) {
+  const cx = sw / 2, cy = sh / 2, a = 6 * k, b = 13 * k, v = S.view;
+  ctx.save();
+  ctx.lineCap = 'round';
+  for (const [c, lw] of [['rgba(0,0,0,0.5)', 3.2], ['rgba(255,255,255,0.8)', 1.4]]) {
+    ctx.strokeStyle = c; ctx.lineWidth = lw * k; ctx.beginPath();
+    ctx.moveTo(cx - b, cy); ctx.lineTo(cx - a, cy); ctx.moveTo(cx + a, cy); ctx.lineTo(cx + b, cy);
+    ctx.moveTo(cx, cy - b); ctx.lineTo(cx, cy - a); ctx.moveTo(cx, cy + a); ctx.lineTo(cx, cy + b);
+    ctx.stroke();
+  }
+  ctx.font = `600 ${12 * k}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.shadowColor = 'rgba(0,0,0,0.9)'; ctx.shadowBlur = 4 * k; ctx.fillStyle = 'rgba(255,255,255,0.92)';
+  // camera mode: the moon can fill the middle of the frame, so the text goes just above the frame
+  const txt = `az ${v.azDeg.toFixed(1)}\u00b0  alt ${v.altDeg.toFixed(1)}\u00b0`;
+  if (geo) { ctx.textBaseline = 'bottom'; ctx.fillText(txt, cx, geo.rect.y - 6 * k); } else ctx.fillText(txt, cx, cy + b + 5 * k);
+  ctx.restore();
+}
+
 /** Paint the whole picture. W, H in device pixels; k = device pixel ratio. */
 export function draw(ctx, S, W, H, k = 1) {
-  const cam = S.cam = screenCamera(S.view);
+  // camera mode: the screen camera is derived from the lens; the view's width follows it
+  const geo = S.geo = S.camera?.on ? cameraGeometry(S.camera, W, H, (S.ui?.top ?? 56) * k, (S.ui?.bottom ?? H / k) * k) : null;
+  if (geo) S.view.hfovDeg = geo.hfovDeg;
+  const cam = S.cam = screenCamera(S.view, geo);
   const sunAlt = S.sm.sun.alt / D2R;
   const [top, bot] = skyColors(sunAlt);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -252,5 +301,7 @@ export function draw(ctx, S, W, H, k = 1) {
 
   // 6 scales
   if (S.show.scales) drawScales(ctx, S, cam, W, H, k, edge);
+  if (geo) drawFrame(ctx, S, geo, W, H, k);
+  drawAim(ctx, S, W, H, k, geo);
   S.edge = edge;
 }

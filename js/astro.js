@@ -1,6 +1,6 @@
 // Sun, moon and Milky Way positions. No DOM. Angles in radians unless the name
 // ends in Deg. Directions are ENU unit vectors [east, north, up].
-import * as A from '../vendor/astronomy.js?v=1115.1805-901b992';
+import * as A from '../vendor/astronomy.js?v=1115.1822-4403c80';
 
 export const Body = A.Body;
 
@@ -34,6 +34,12 @@ export function sunMoon(date, obs) {
     moon: { az: m.az, alt: m.alt, dir: m.dir, radius: Math.asin(R_MOON_KM / m.distKm),
             phaseAngle: ill.phase_angle * D2R, fraction: ill.phase_fraction },
   };
+}
+
+/** Just the position of one body: {az, alt} radians (refracted, topocentric). Cheaper than sunMoon. */
+export function altAz(body, date, obs) {
+  const p = bodyPos(body, toTime(date), obs);
+  return { az: p.az, alt: p.alt };
 }
 
 export function path(body, obs, startDate, hours = 24, stepMin = 10) {
