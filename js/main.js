@@ -1,17 +1,19 @@
 // main.js -- state, wiring, readouts, URL state, startup. The menu (menu.js) gets the functions it needs through initMenu().
-import { observer, sunMoon, altAz, path, Body, milkyWay, milkyWayAt, nightSky, enu } from './astro.js?v=1116.0520-8c43238';
-import { loadSkyArt } from './skyart.js?v=1116.0520-8c43238';
-import * as TZ from './tz.js?v=1116.0520-8c43238';
-import { Ruler } from './ruler.js?v=1116.0520-8c43238';
-import { makeHorizon, terrainEvents, hidden } from './horizon.js?v=1116.0520-8c43238';
-import { DEMO, demoTerrain } from './demo.js?v=1116.0520-8c43238';
-import { draw } from './draw.js?v=1116.0520-8c43238';
-import { clampView, attachGestures } from './view.js?v=1116.0520-8c43238';
-import { SENSORS } from './optics.js?v=1116.0520-8c43238';
-import { listPlaces, openPlace, getLastPlaceId, setLastPlaceId, loadPeaks } from './places.js?v=1116.0520-8c43238';
-import { visiblePeaks } from './peaks.js?v=1116.0520-8c43238';
-import { initMenu } from './menu.js?v=1116.0520-8c43238';
-import { tick } from './haptic.js?v=1116.0520-8c43238';
+import { observer, sunMoon, altAz, path, Body, milkyWay, milkyWayAt, nightSky, enu } from './astro.js?v=1116.1309-f833c0b';
+import { loadSkyArt } from './skyart.js?v=1116.1309-f833c0b';
+import * as TZ from './tz.js?v=1116.1309-f833c0b';
+import { Ruler } from './ruler.js?v=1116.1309-f833c0b';
+import { makeHorizon, terrainEvents, hidden } from './horizon.js?v=1116.1309-f833c0b';
+import { DEMO, demoTerrain } from './demo.js?v=1116.1309-f833c0b';
+import { draw } from './draw.js?v=1116.1309-f833c0b';
+import { clampView, attachGestures } from './view.js?v=1116.1309-f833c0b';
+import { SENSORS } from './optics.js?v=1116.1309-f833c0b';
+import { listPlaces, openPlace, getLastPlaceId, setLastPlaceId, loadPeaks } from './places.js?v=1116.1309-f833c0b';
+import { visiblePeaks } from './peaks.js?v=1116.1309-f833c0b';
+import { initMenu } from './menu.js?v=1116.1309-f833c0b';
+import { tick } from './haptic.js?v=1116.1309-f833c0b';
+import { AR } from './ar.js?v=1116.1309-f833c0b';
+import { whereAmI } from './places.js?v=1116.1309-f833c0b';
 
 const R2D = 180 / Math.PI;
 
@@ -161,6 +163,7 @@ export function setPlace({ name, lat, lon, terrain, eyeM = 1.7, maxDist = 60000,
   S.obs = observer(lat, lon, Number.isFinite(ground) ? ground : 0);
   S.horizon = makeHorizon(terrain, lat, lon, eyeM, maxDist);
   S.placeSeq++;
+  if (ar?.on) setAR(false);
   S.subject = null;
   S.peaks = [];
   if (id) {
@@ -248,7 +251,7 @@ export function setCamera(patch = {}) {
   requestDraw(); changed();
 }
 // pinch / wheel / +- zoom the lens in camera mode, in whole millimeters
-const zoomLens = f => { if (!S.camera.on) return false; setCamera({ focal: S.camera.exact * f }); return true; };
+const zoomLens = f => { if (!S.camera.on || S.ar) return false; setCamera({ focal: S.camera.exact * f }); return true; };
 
 // canvas size in device pixels
 function resize() {
@@ -272,7 +275,36 @@ for (const b of document.querySelectorAll('#bar .tog:not(#more)')) {
   });
 }
 
-attachGestures($('stage'), S.view, { onChange: requestDraw, onDoubleTap: lookAtMoon, zoom: zoomLens });
+attachGestures($('stage'), S.view, { onChange: requestDraw, onDoubleTap: () => { if (!S.ar) lookAtMoon(); }, zoom: zoomLens });
+
+// ---- AR: phone camera + compass, ridges pulled onto the real skyline (ar.js) ----
+const arMsg = $('arMsg'), arBtn = $('arBtn');
+const arSay = (text, kind = '') => { arMsg.textContent = text || ''; arMsg.className = `chip ${kind}`; arMsg.hidden = !text; };
+const ar = new AR($('arVideo'), S, {
+  draw: () => { if (S.horizon && S.sm) draw(ctx, S, canvas.width, canvas.height, window.devicePixelRatio || 1); },
+  status: arSay,
+});
+let arPrev = null;
+export async function setAR(on) {
+  if (on === ar.on) return;
+  if (!on) {
+    ar.stop(); arBtn.setAttribute('aria-pressed', false); arSay('');
+    if (arPrev) setView({ altDeg: Math.max(-5, Math.min(30, S.view.altDeg)), hfovDeg: arPrev.hfovDeg });
+    return;
+  }
+  if (!S.place?.id) { menu.open('place', 'AR needs a downloaded location: use Current location.'); return; }
+  arPrev = { ...S.view };
+  arBtn.setAttribute('aria-pressed', true);
+  try {
+    await ar.start();
+    setTime(new Date());
+    whereAmI().then(p => {                         // the overlay is drawn from the chosen location, not from where the phone is
+      const km = metersApart(p, S.place) / 1000;
+      if (ar.on && km > 0.3) arSay(`You are ${km < 10 ? km.toFixed(1) : Math.round(km)} km from ${S.place.name}; the ridges are drawn from there. Download Current location to match.`, 'bad');
+    }).catch(() => {});
+  } catch (e) { ar.stop(); arBtn.setAttribute('aria-pressed', false); arSay(''); menu.note(e.message); menu.open('place'); }
+}
+arBtn.addEventListener('click', () => setAR(!ar.on));
 
 // ---- link state: #lat=..&lon=..&t=..&az=..&alt=..&fov=..&cam=ff,600,l (written at most once a second) ----
 let hashTimer = 0, lastHash = -1e9, started = false;
@@ -328,7 +360,7 @@ async function start() {
   } catch (e) { menu.note(e.message); }
   if (!opened) {
     useDemo();
-    if (!isDemo) menu.open('place', 'Choose a place to see its real horizon.');
+    if (!isDemo) menu.open('place', 'Choose a location to see its real horizon.');
   }
   const tv = hash.t || q.get('t'), td = tv ? new Date(tv) : null;
   setTime(td && !Number.isNaN(td.getTime()) ? td : isDemo ? new Date('2026-11-25T00:30:00Z') : new Date());
@@ -344,7 +376,7 @@ async function start() {
 start();
 
 loadSkyArt(requestDraw);
-window.moonshot = { S, setTime, setView, setPlace, usePlace, applyPlan, useDemo, requestDraw, setTz, setCamera, ruler, rulerMarks, hashString, menu };
+window.moonshot = { S, setAR, setTime, setView, setPlace, usePlace, applyPlan, useDemo, requestDraw, setTz, setCamera, ruler, rulerMarks, hashString, menu };
 
 // ---- offline shell: not in the native app (Capacitor serves the files itself) ----
 if ('serviceWorker' in navigator && !window.Capacitor) {

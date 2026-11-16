@@ -1,10 +1,10 @@
-// menu.js -- the Menu sheet: Place, Camera, Display, Info tabs. Built once from the app's
+// menu.js -- the Menu sheet: Location, Camera, Display, Info tabs. Built once from the app's
 // functions (passed in by main.js, so there is no import cycle).
-import { whereAmI, terrainEstimate, createPlace, listPlaces, openPlace, removePlace, updatePlace, storageUse } from './places.js?v=1116.0520-8c43238';
-import { pickSpot } from './mappick.js?v=1116.0520-8c43238';
-import { SENSORS, FOCALS, frameSize, fovDeg, nearestFocalIndex } from './optics.js?v=1116.0520-8c43238';
-import { tick } from './haptic.js?v=1116.0520-8c43238';
-import { validZone, getZone } from './tz.js?v=1116.0520-8c43238';
+import { whereAmI, terrainEstimate, createPlace, listPlaces, openPlace, removePlace, updatePlace, storageUse, nameFor } from './places.js?v=1116.1309-f833c0b';
+import { pickSpot } from './mappick.js?v=1116.1309-f833c0b';
+import { SENSORS, FOCALS, frameSize, fovDeg, nearestFocalIndex } from './optics.js?v=1116.1309-f833c0b';
+import { tick } from './haptic.js?v=1116.1309-f833c0b';
+import { validZone, getZone } from './tz.js?v=1116.1309-f833c0b';
 
 const R2D = 180 / Math.PI;
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -17,7 +17,7 @@ export function initMenu(api) {
   sheet.innerHTML = `
   <header>
     <div class="tabs" role="tablist">
-      <button role="tab" data-tab="place" aria-selected="true">Place</button>
+      <button role="tab" data-tab="place" aria-selected="true">Location</button>
       <button role="tab" data-tab="camera" aria-selected="false">Camera</button>
       <button role="tab" data-tab="display" aria-selected="false">Display</button>
       <button role="tab" data-tab="info" aria-selected="false">Info</button>
@@ -28,10 +28,10 @@ export function initMenu(api) {
   <div class="pane" data-pane="place">
     <div class="prompt" id="pPrompt" hidden></div>
     <div class="cur" id="pCur"></div>
-    <div class="two">
-      <button class="btn" id="pHere">Where I am</button>
-      <button class="btn" id="pMap">Pick on the map</button>
-      <button class="btn" id="pSolve">Find a spot for a subject</button>
+    <div class="three">
+      <button class="btn" id="pHere">Current location</button>
+      <button class="btn" id="pMap">Pick location</button>
+      <button class="btn" id="pSolve">Pick subject</button>
     </div>
     <div class="msg" id="pMsg" role="status"></div>
     <div id="pNew" hidden>
@@ -50,7 +50,7 @@ export function initMenu(api) {
       </div>
     </div>
     <div class="row"><label for="pEye">Eye height above ground (m)</label><input type="number" id="pEye" inputmode="decimal" min="0" max="3000" step="0.1" value="1.7"></div>
-    <div class="legend">Places on this device</div>
+    <div class="legend">Locations on this device</div>
     <div id="pList"></div>
     <div class="est" id="pStore"></div>
   </div>
@@ -131,12 +131,35 @@ export function initMenu(api) {
     if (document.activeElement !== $('pEye') && p) $('pEye').value = p.eyeM;
   }
 
+  // The name box starts with the best name the map knows for the spot (town, park, road...);
+  // whatever the user types wins. Returns a promise for the name once looked up.
   function showDraft(d) {
     draft = d;
     $('pNew').hidden = false;
-    $('pName').value = d.name || '';
+    const box = $('pName');
+    box.value = d.name || ''; box.placeholder = 'Looking up a name…'; box.dataset.auto = '1';
     updateEst();
     $('pNew').scrollIntoView?.({ block: 'nearest' });
+    const want = d;
+    return autoName(d).then(n => {
+      if (draft !== want) return n;
+      box.placeholder = 'Name this location';
+      if (n && box.dataset.auto === '1') box.value = n;
+      return box.value.trim() || n;
+    });
+  }
+  $('pName').addEventListener('input', () => { $('pName').dataset.auto = ''; });
+
+  const EV = { moon: ['Moonrise', 'Moonset'], sun: ['Sunrise', 'Sunset'], gc: ['Milky Way rise', 'Milky Way set'] };
+  async function autoName(d) {
+    if (d.name && !d.plan) return d.name;                       // a search result already has its name
+    const spot = await nameFor(d.lat, d.lon);
+    if (!d.plan) return spot?.name || null;
+    const ev = EV[d.plan.body]?.[d.plan.kind === 'rise' ? 0 : 1] || 'Subject';
+    const sj = d.plan.subject;
+    let subj = sj?.name || null;
+    if (!subj && sj) { const r = await nameFor(sj.lat, sj.lon, { zoom: 14 }); subj = r?.feature ? r.name.split(',')[0] : null; }
+    return [subj ? `${ev} over ${subj}` : ev, spot?.name].filter(Boolean).join(' · ');
   }
   function updateEst() {
     if (!draft) return;
@@ -163,7 +186,7 @@ export function initMenu(api) {
     try {
       const p = await whereAmI();
       say(`Position found, accurate to about ${Math.round(p.acc)} m.`, false);
-      showDraft({ lat: p.lat, lon: p.lon, name: 'My location' });
+      showDraft({ lat: p.lat, lon: p.lon, name: null });
     } catch (e) { say(e.message); } finally { $('pHere').disabled = false; }
   });
   const openMap = async mode => {
@@ -175,9 +198,12 @@ export function initMenu(api) {
     try { r = await pickSpot({ ...start, lines: lines(), mode, date: S.date }); } catch (e) { say(e.message); }
     sheet.hidden = false;
     if (!r) return;
-    const what = r.plan && `${{ moon: 'Moon', sun: 'Sun', gc: 'Milky Way' }[r.plan.body]}${r.plan.kind === 'rise' ? 'rise' : 'set'} spot`;
-    showDraft({ lat: r.lat, lon: r.lon, name: what || r.name, plan: r.plan || null });
-    if (r.plan) $('pGo').click();          // a solver spot goes straight on: download, then the main view at the alignment time
+    const named = showDraft({ lat: r.lat, lon: r.lon, name: r.name, plan: r.plan || null });
+    if (r.plan) {                          // a solver spot goes straight on: name it, download, then the main view at the alignment time
+      say('Naming the spot…', false);
+      await Promise.race([named, new Promise(res => setTimeout(res, 3000))]);
+      $('pGo').click();
+    }
   };
   $('pMap').addEventListener('click', () => openMap('spot'));
   $('pSolve').addEventListener('click', () => openMap('solver'));
@@ -229,14 +255,24 @@ export function initMenu(api) {
     const rows = [`<div class="area"><button class="sel" data-demo="1"><b>Demo ridge</b><small>Built-in test terrain, no download</small></button><span class="tag">${S.place && !S.place.id ? 'In use' : ''}</span></div>`];
     for (const p of list) {
       const on = S.place?.id === p.id;
-      rows.push(`<div class="area"><button class="sel" data-id="${esc(p.id)}"><b>${esc(p.name)}</b><small>${p.lat.toFixed(3)}, ${p.lon.toFixed(3)} &middot; ${p.reach === 'far' ? 120 : 60} km${p.saved ? '' : ' &middot; this session only'}</small></button>${on ? '<span class="tag">In use</span>' : `<button class="btn danger" data-del="${esc(p.id)}">Delete</button>`}</div>`);
+      rows.push(`<div class="area"><button class="sel" data-id="${esc(p.id)}"><b>${esc(p.name)}</b><small>${p.lat.toFixed(3)}, ${p.lon.toFixed(3)} &middot; ${p.reach === 'far' ? 120 : 60} km${p.saved ? '' : ' &middot; this session only'}</small></button><span class="acts"><button class="btn" data-ren="${esc(p.id)}" aria-label="Rename ${esc(p.name)}">Rename</button>${on ? '<span class="tag">In use</span>' : `<button class="btn danger" data-del="${esc(p.id)}">Delete</button>`}</span></div>`);
     }
     box.innerHTML = rows.join('');
     const u = await storageUse();
     $('pStore').textContent = u ? `Using ${MB(u.used)} of the ${MB(u.quota)} this browser allows.` : '';
   }
   $('pList').addEventListener('click', async e => {
-    const sel = e.target.closest('.sel'), del = e.target.closest('[data-del]');
+    const sel = e.target.closest('.sel'), del = e.target.closest('[data-del]'), ren = e.target.closest('[data-ren]');
+    if (ren) {
+      const id = ren.dataset.ren, old = ren.closest('.area').querySelector('.sel b')?.textContent || '';
+      const name = prompt('Name this location', old)?.trim();
+      if (!name || name === old) return;
+      try {
+        await updatePlace(id, { name });
+        if (S.place?.id === id) { S.place.name = name; api.invalidate(); document.getElementById('statName').textContent = name; }
+      } catch (er) { say(er.message); }
+      refreshList(); return;
+    }
     if (sel && !busy) {
       if (sel.dataset.demo) { api.useDemo(); close(); return; }
       say('Opening…', false);

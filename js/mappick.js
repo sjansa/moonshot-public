@@ -5,13 +5,13 @@
 // A native picker can replace Leaflet: if the Capacitor 'SpotPicker' plugin exists it is used
 // (not in solver mode).
 
-import { whereAmI } from './places.js?v=1116.0520-8c43238';
-import * as astro from './astro.js?v=1116.0520-8c43238';
-import * as TZ from './tz.js?v=1116.0520-8c43238';
-import { tick } from './haptic.js?v=1116.0520-8c43238';
-import { makeSkyGlyph } from './skyglyph.js?v=1116.0520-8c43238';
-import { fetchElevGrid } from './elev.js?v=1116.0520-8c43238';
-import { bodyTrack, solveGrid, solveSpot, elevAt, lonLatToPx, pxToLonLat } from './solver.js?v=1116.0520-8c43238';
+import { whereAmI } from './places.js?v=1116.1309-f833c0b';
+import * as astro from './astro.js?v=1116.1309-f833c0b';
+import * as TZ from './tz.js?v=1116.1309-f833c0b';
+import { tick } from './haptic.js?v=1116.1309-f833c0b';
+import { makeSkyGlyph } from './skyglyph.js?v=1116.1309-f833c0b';
+import { fetchElevGrid } from './elev.js?v=1116.1309-f833c0b';
+import { bodyTrack, solveGrid, solveSpot, elevAt, lonLatToPx, pxToLonLat } from './solver.js?v=1116.1309-f833c0b';
 
 const LINE_KM = 20;
 let leafletReady = null;
@@ -85,7 +85,7 @@ const R2D = 180 / Math.PI, DAY_MS = 86400000;
 async function pickNative(opts) {
   const r = await window.Capacitor.nativePromise('SpotPicker', 'pick', { lat: opts.lat, lon: opts.lon });
   if (!r || r.cancelled || r.canceled || !Number.isFinite(+r.lat) || !Number.isFinite(+r.lon)) return null;
-  return { lat: +r.lat, lon: +r.lon, name: r.name || fixed(+r.lat, +r.lon) };
+  return { lat: +r.lat, lon: +r.lon, name: r.name || null };
 }
 
 /**
@@ -342,7 +342,7 @@ export async function pickSpot(opts = {}) {
   };
   map.on('moveend', () => refetch());
 
-  const setSubject = async (lat, lon) => {
+  const setSubject = async (lat, lon, sname = null) => {
     say('Loading terrain…', true);
     try {
       let g = S.grid && Number.isFinite(elevAt(S.grid, lon, lat)) ? S.grid : null;
@@ -358,7 +358,7 @@ export async function pickSpot(opts = {}) {
       }
       if (!Number.isFinite(bz)) throw new Error('No terrain data at that point.');
       const p = pxToLonLat(bx, by, g.z);
-      S.subject = { lat: p.lat, lon: p.lon, ground: bz, elev: bz + heightM() };
+      S.subject = { lat: p.lat, lon: p.lon, ground: bz, elev: bz + heightM(), name: sname };
       if (!S.grid) S.grid = g;
       if (subjMarker) subjMarker.setLatLng([p.lat, p.lon]);
       else subjMarker = L.marker([p.lat, p.lon], { icon: subjIcon, interactive: false, keyboard: false }).addTo(map);
@@ -402,7 +402,7 @@ export async function pickSpot(opts = {}) {
       const hit = (await r.json())[0];
       if (!hit) { say('Nothing found by that name.'); return; }
       const lat = +hit.lat, lon = +hit.lon;
-      if (S.mode === 'solver' && S.tap === 'subject') setSubject(lat, lon); else place(lat, lon, hit.name || q);   // in the solver a search finds the subject
+      if (S.mode === 'solver' && S.tap === 'subject') setSubject(lat, lon, hit.name || null); else place(lat, lon, hit.name || q);   // in the solver a search finds the subject
       map.flyTo([lat, lon], Math.max(map.getZoom(), 12));
       say('');
     } catch { say('Search failed. Check the connection and try again.'); } finally { busy = false; }
@@ -425,11 +425,11 @@ export async function pickSpot(opts = {}) {
     cancel.onclick = () => done(null);
     use.onclick = () => {
       if (!marker) return;
-      const { lat, lng } = marker.getLatLng(), out = { lat, lon: lng, name: name || fixed(lat, lng) };
+      const { lat, lng } = marker.getLatLng(), out = { lat, lon: lng, name: name || null };
       const r = solverOn() && S.subject && S.spot?.r;
       if (r && r.visible) {
         const sj = S.subject;
-        out.plan = { time: new Date(r.t), azDeg: r.az * R2D, altDeg: r.alt * R2D, body: S.body, kind: S.kind, subject: { lat: sj.lat, lon: sj.lon, elev: sj.elev } };
+        out.plan = { time: new Date(r.t), azDeg: r.az * R2D, altDeg: r.alt * R2D, body: S.body, kind: S.kind, subject: { lat: sj.lat, lon: sj.lon, elev: sj.elev, name: sj.name || null } };
       }
       done(out);
     };

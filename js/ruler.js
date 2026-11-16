@@ -6,7 +6,7 @@
 // a jump and the selected span returns on release. The haptic tick is opts.haptic.
 // Only import: skyglyph.js (moon + Milky Way glyph in the readout). See PLAN.md section 8.
 
-import { makeSkyGlyph, drawPhase } from './skyglyph.js?v=1116.0520-8c43238';
+import { makeSkyGlyph, drawPhase } from './skyglyph.js?v=1116.1309-f833c0b';
 
 export const SPANS = [2 * 3600e3, 12 * 3600e3, 3 * 86400e3, 30 * 86400e3];
 const SPAN_LABELS = ['2h', '12h', '3d', '30d'];
@@ -22,6 +22,16 @@ const mod = (a, n) => ((a % n) + n) % n;
 /** New time (ms, unsnapped) after dragging dxPx pixels. Dragging left (dx<0) moves forward. */
 export function dragTime(startMs, dxPx, spanMs, widthPx) {
   return startMs - dxPx * spanMs / widthPx;
+}
+
+/**
+ * Momentum after a toss: the extra distance (px) and the time it takes to
+ * coast, for a release speed v (px/ms), decaying as exp(-t / tau).
+ * Returns the offset at time t (ms) after release.
+ */
+export const FLING = { tau: 325, minV: 0.25, stopV: 0.01 };
+export function flingOffset(v, t, tau = FLING.tau) {
+  return v * tau * (1 - Math.exp(-t / tau));
 }
 
 /**
@@ -173,9 +183,10 @@ export class Ruler {
         this._clearLP(); this._leaveFine(); this._drag.noLong = true;
         return;
       }
+      this._stopFling();
       cv.focus({ preventScroll: true });
       try { cv.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
-      this._drag = { id: e.pointerId, x0: e.clientX, t0: this._exact, sx: e.clientX, sy: e.clientY, lx: e.clientX };
+      this._drag = { id: e.pointerId, x0: e.clientX, t0: this._exact, sx: e.clientX, sy: e.clientY, lx: e.clientX, hist: [{ x: e.clientX, t: e.timeStamp || performance.now() }] };
       this._lpTimer = setTimeout(() => this._enterFine(), LONG_PRESS_MS);
       e.preventDefault();
     });
@@ -183,13 +194,25 @@ export class Ruler {
       const d = this._drag;
       if (!d || d.id !== e.pointerId) return;
       d.lx = e.clientX;
+      const now = e.timeStamp || performance.now();
+      d.hist.push({ x: e.clientX, t: now });
+      while (d.hist.length > 2 && now - d.hist[0].t > 100) d.hist.shift();
       if (this._lpTimer && Math.hypot(e.clientX - d.sx, e.clientY - d.sy) >= LONG_PRESS_PX) this._clearLP();
       const prev = snapMinute(this._exact);
       this._user(dragTime(d.t0, e.clientX - d.x0, this._curSpan(), this._w || 1), true);
       if (this._fine && snapMinute(this._exact) !== prev) this.o.haptic?.();
     });
     const end = (e) => {
-      if (this._drag && this._drag.id === e.pointerId) { this._clearLP(); this._leaveFine(); this._drag = null; }
+      const d = this._drag;
+      if (!d || d.id !== e.pointerId) return;
+      const fine = this._fine;
+      this._clearLP(); this._leaveFine(); this._drag = null;
+      // a toss keeps the time moving and slows it down (not in fine mode, not after a second finger)
+      if (e.type !== 'pointerup' || fine || d.noLong) return;
+      const now = e.timeStamp || performance.now(), h = d.hist.filter(p => now - p.t <= 100);
+      if (h.length < 2 || now - h[h.length - 1].t > 80) return;          // stopped before letting go
+      const v = (h[h.length - 1].x - h[0].x) / Math.max(8, h[h.length - 1].t - h[0].t);
+      if (Math.abs(v) >= FLING.minV) this._fling(v);
     };
     cv.addEventListener('pointerup', end);
     cv.addEventListener('pointercancel', end);
@@ -221,6 +244,19 @@ export class Ruler {
   _curSpan() { return this._fine ? FINE_SPAN : SPANS[this._spanIdx]; }
   _cacheIdx() { return this._fine ? SPANS.length : this._spanIdx; }
 
+  _fling(v) {
+    if (typeof requestAnimationFrame === 'undefined') return;
+    const span = this._curSpan(), w = this._w || 1, t0 = this._exact, start = performance.now();
+    const step = () => {
+      const t = performance.now() - start;
+      this._user(dragTime(t0, flingOffset(v, t), span, w), true);
+      this._flingRaf = Math.abs(v * Math.exp(-t / FLING.tau)) > FLING.stopV ? requestAnimationFrame(step) : 0;
+    };
+    this._flingRaf = requestAnimationFrame(step);
+  }
+
+  _stopFling() { if (this._flingRaf) { cancelAnimationFrame(this._flingRaf); this._flingRaf = 0; } }
+
   _clearLP() { if (this._lpTimer) { clearTimeout(this._lpTimer); this._lpTimer = 0; } }
 
   _enterFine() {
@@ -250,6 +286,7 @@ export class Ruler {
   }
 
   setSpan(ms) {
+    this._stopFling();
     let i = SPANS.indexOf(ms);
     if (i < 0) i = SPANS.reduce((b, s, j) => (Math.abs(s - ms) < Math.abs(SPANS[b] - ms) ? j : b), 0);
     this._spanIdx = i;
@@ -286,6 +323,7 @@ export class Ruler {
     const step = () => this._user(snapMinute(this._exact) + dir * MIN);
     btn.addEventListener('pointerdown', (e) => {
       if (e.button != null && e.button > 0) return;
+      this._stopFling();
       e.preventDefault(); e.stopPropagation();
       try { btn.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
       stop(); step();

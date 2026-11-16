@@ -1,10 +1,11 @@
 // draw.js -- everything painted on the canvas (PLAN 7.2, 7.3). All sizes are device pixels.
-import { skyTAt } from './horizon.js?v=1116.0520-8c43238';
-import { drawPeaks } from './peaks.js?v=1116.0520-8c43238';
-import { screenCamera, cameraGeometry } from './view.js?v=1116.0520-8c43238';
-import { format as tzFormat } from './tz.js?v=1116.0520-8c43238';
-import { TAU, D2R } from '../core/terrain.js?v=1116.0520-8c43238';
-import { art, milkyWayLayer, northTurn } from './skyart.js?v=1116.0520-8c43238';
+import { skyTAt } from './horizon.js?v=1116.1309-f833c0b';
+import { drawPeaks } from './peaks.js?v=1116.1309-f833c0b';
+import { screenCamera, cameraGeometry } from './view.js?v=1116.1309-f833c0b';
+import { format as tzFormat } from './tz.js?v=1116.1309-f833c0b';
+import { TAU, D2R } from '../core/terrain.js?v=1116.1309-f833c0b';
+import { Camera } from '../core/camera.js?v=1116.1309-f833c0b';
+import { art, milkyWayLayer, northTurn } from './skyart.js?v=1116.1309-f833c0b';
 
 const clamp01 = x => Math.min(1, Math.max(0, x));
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -96,7 +97,7 @@ function drawSky(ctx, S, cam, sw, sh, k, alpha) {
     if (dark > 0) {
       const r = pxPer(MW_R_DEG * D2R), sp = getSprite(), d = mwNow.dirs, pts = S.mw.points;
       const v = S.view, layer = mwNow.basis && milkyWayLayer(cam, sw, sh, mwNow.basis,
-        `${+S.date}|${v.azDeg}|${v.altDeg}|${cam.fn}|${sw}|${sh}|${S.placeSeq}`);
+        `${+S.date}|${S.ar ? cam.R.map(x => x.toFixed(4)).join() : `${v.azDeg}|${v.altDeg}`}|${cam.fn}|${sw}|${sh}|${S.placeSeq}`);
       ctx.globalCompositeOperation = 'lighter';
       if (layer) {                                   // the panorama; the dots below are the fallback while it loads
         ctx.globalAlpha = alpha * dark;
@@ -183,8 +184,14 @@ function drawSky(ctx, S, cam, sw, sh, k, alpha) {
     const night = clamp01((-2 - sunAlt) / 6);          // by day the unlit part is lost in the sky
     ctx.save();
     ctx.translate(P[0], P[1]); ctx.rotate(theta);
-    ctx.fillStyle = pic ? `rgba(22,26,34,${0.25 + 0.6 * night})` : '#2a2f36';
-    ctx.beginPath(); ctx.arc(0, 0, rr, 0, TAU); ctx.fill();
+    // the unlit part: the same disc, faint, so it melts into the sky without vanishing
+    ctx.globalAlpha = alpha * (0.1 + 0.12 * night);
+    if (pic) {
+      ctx.save(); ctx.rotate(-theta + (up ? northTurn(up[0], up[1]) : 0));
+      ctx.drawImage(pic, -rr * 1.004, -rr * 1.004, rr * 2.008, rr * 2.008);
+      ctx.restore();
+    } else { ctx.fillStyle = '#c9ccd2'; ctx.beginPath(); ctx.arc(0, 0, rr, 0, TAU); ctx.fill(); }
+    ctx.globalAlpha = alpha;
     ctx.fillStyle = '#f4f1e6'; ctx.beginPath();                    // the lit part, towards the sun
     ctx.arc(0, 0, rr, -Math.PI / 2, Math.PI / 2);
     ctx.ellipse(0, 0, rr * Math.abs(Math.cos(moon.phaseAngle)), rr, 0, Math.PI / 2, -Math.PI / 2, moon.phaseAngle > Math.PI / 2);
@@ -279,32 +286,41 @@ function drawAim(ctx, S, sw, sh, k, geo) {
 /** Paint the whole picture. W, H in device pixels; k = device pixel ratio. */
 export function draw(ctx, S, W, H, k = 1) {
   // camera mode: the screen camera is derived from the lens; the view's width follows it
-  const geo = S.geo = S.camera?.on ? cameraGeometry(S.camera, W, H, (S.ui?.top ?? 56) * k, (S.ui?.bottom ?? H / k) * k) : null;
+  // AR: the phone camera is behind the canvas and sets the view (ar.js); no lens frame
+  const ar = S.ar;
+  const geo = S.geo = !ar && S.camera?.on ? cameraGeometry(S.camera, W, H, (S.ui?.top ?? 56) * k, (S.ui?.bottom ?? H / k) * k) : null;
   if (geo) S.view.hfovDeg = geo.hfovDeg;
-  const cam = S.cam = screenCamera(S.view, geo);
+  const cam = S.cam = ar ? new Camera(ar.R, ar.fn, ar.k1 || 0) : screenCamera(S.view, geo);
   const sunAlt = S.sm.sun.alt / D2R;
   const [top, bot] = skyColors(sunAlt);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
 
-  // 1 sky
-  const g = ctx.createLinearGradient(0, 0, 0, H);
-  g.addColorStop(0, rgb(top)); g.addColorStop(1, rgb(bot));
-  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  // 1 sky (AR: the picture is the sky)
+  if (ar) ctx.clearRect(0, 0, W, H);
+  else {
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, rgb(top)); g.addColorStop(1, rgb(bot));
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  }
 
   // 2 sky objects at full strength
   drawSky(ctx, S, cam, W, H, k, 1);
 
-  // 3 terrain, lifted toward the sky color by day
+  // 3 terrain, lifted toward the sky color by day (AR: cut away, the real ground shows)
   const edge = terrainEdge(S, cam, W, H);
-  ctx.fillStyle = rgb(mix([11, 20, 24], bot, 0.35 * clamp01((sunAlt + 4) / 10)));
-  ctx.fill(edge.path);
+  if (ar) {
+    ctx.save(); ctx.globalCompositeOperation = 'destination-out'; ctx.fill(edge.path); ctx.restore();
+  } else {
+    ctx.fillStyle = rgb(mix([11, 20, 24], bot, 0.35 * clamp01((sunAlt + 4) / 10)));
+    ctx.fill(edge.path);
+  }
 
   // 4 the same objects again, dimmed and blue-washed, only where terrain covers them
   ctx.save();
   ctx.clip(edge.path);
-  drawSky(ctx, S, cam, W, H, k, 0.38);
-  ctx.fillStyle = 'rgba(70,110,150,0.18)'; ctx.fillRect(0, 0, W, H);
+  drawSky(ctx, S, cam, W, H, k, ar ? 0.3 : 0.38);
+  if (!ar) { ctx.fillStyle = 'rgba(70,110,150,0.18)'; ctx.fillRect(0, 0, W, H); }
   ctx.restore();
 
   // 5 interior ridges, then the skyline over everything

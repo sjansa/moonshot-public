@@ -7,8 +7,8 @@
 //
 // Nothing here touches browser globals at import time (tests run it in Node).
 
-import { buildTerrain, estimate, expandBbox, DEM_UNIT } from '../core/build.js?v=1116.0520-8c43238';
-import { Grid, Terrain } from '../core/terrain.js?v=1116.0520-8c43238';
+import { buildTerrain, estimate, expandBbox, DEM_UNIT } from '../core/build.js?v=1116.1309-f833c0b';
+import { Grid, Terrain } from '../core/terrain.js?v=1116.1309-f833c0b';
 
 export const REACH = { normal: { km: 60, coarseRes: 60 }, far: { km: 120, coarseRes: 120 } };
 export const FINE_KM = 8, FINE_RES = 10;
@@ -232,4 +232,37 @@ export function whereAmI() {
           : 'Could not get your position. Pick the spot on the map instead.')),
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 });
   });
+}
+
+// ------------------------------------------------------------------ names
+
+const NAMED = new Set(['natural', 'leisure', 'tourism', 'boundary', 'amenity', 'historic', 'waterway', 'water', 'landuse', 'man_made', 'aeroway']);
+
+/**
+ * A short human name from a Nominatim reverse-geocode answer (jsonv2): a named
+ * feature (peak, park, lake, trailhead...) first, then road and town, then the
+ * town, county or state. -> {name, feature} or null. feature is the OSM
+ * category of a named feature ('natural' for a peak), else null.
+ */
+export function nameFromReverse(j) {
+  if (!j || j.error) return null;
+  const a = j.address || {};
+  const town = a.village || a.hamlet || a.town || a.city || a.suburb || a.municipality || a.neighbourhood || null;
+  const area = a.county || a.state || a.country || null;
+  const feat = j.name && NAMED.has(j.category) && j.name !== town ? j.name : null;
+  if (feat) return { name: town && !feat.includes(town) ? `${feat}, ${town}` : feat, feature: j.category };
+  if (a.road && town) return { name: `${a.road}, ${town}`, feature: null };
+  if (a.road) return { name: area ? `${a.road}, ${area}` : a.road, feature: null };
+  const n = town || area;
+  return n ? { name: n, feature: null } : null;
+}
+
+/** Best available name for a spot from OpenStreetMap (Nominatim reverse). Null on any failure. */
+export async function nameFor(lat, lon, { zoom = 17, timeoutMs = 4000 } = {}) {
+  const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), timeoutMs);
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=${zoom}&lat=${lat.toFixed(5)}&lon=${lon.toFixed(5)}`, { signal: ctl.signal });
+    if (!r.ok) return null;
+    return nameFromReverse(await r.json());
+  } catch { return null; } finally { clearTimeout(timer); }
 }
