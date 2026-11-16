@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0c1a22"/><stop offset="1" stop-color="#14273a"/></linearGradient>
+    <radialGradient id="moon" cx="0.38" cy="0.35" r="0.75"><stop offset="0" stop-color="#fbf6e6"/><stop offset="1" stop-color="#d9d3bd"/></radialGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#sky)"/>
+  <circle cx="300" cy="228" r="112" fill="url(#moon)"/>
+  <circle cx="268" cy="200" r="16" fill="#c9c3ac" opacity=".55"/>
+  <circle cx="330" cy="262" r="22" fill="#c9c3ac" opacity=".45"/>
+  <circle cx="322" cy="190" r="9" fill="#c9c3ac" opacity=".5"/>
+  <path id="ridge" d="M0 372 L58 330 L92 352 L160 276 L206 326 L248 300 L292 352 L344 308 L384 338 L436 282 L512 352 L512 512 L0 512 Z" fill="#081018"/>
+  <path d="M0 372 L58 330 L92 352 L160 276 L206 326 L248 300 L292 352 L344 308 L384 338 L436 282 L512 352" fill="none" stroke="#b9d3e2" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+</svg>

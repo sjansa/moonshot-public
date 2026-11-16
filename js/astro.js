@@ -1,0 +1,100 @@
+// Sun, moon and Milky Way positions. No DOM. Angles in radians unless the name
+// ends in Deg. Directions are ENU unit vectors [east, north, up].
+import * as A from '../vendor/astronomy.js?v=1115.1805-901b992';
+
+export const Body = A.Body;
+
+const D2R = Math.PI / 180, R2D = 180 / Math.PI;
+const R_SUN_KM = 695700, R_MOON_KM = 1737.4;
+
+export function observer(latDeg, lonDeg, heightM) { return new A.Observer(latDeg, lonDeg, heightM); }
+
+export function enu(az, alt) {
+  const c = Math.cos(alt);
+  return [Math.sin(az) * c, Math.cos(az) * c, Math.sin(alt)];
+}
+
+const toTime = d => (d instanceof A.AstroTime ? d : A.MakeTime(d));
+
+// body position: {az, alt (refracted), dir, distKm}
+function bodyPos(body, t, obs) {
+  const eq = A.Equator(body, t, obs, true, true);   // topocentric, required for the moon
+  const hor = A.Horizon(t, obs, eq.ra, eq.dec, 'normal');
+  const az = hor.azimuth * D2R, alt = hor.altitude * D2R;
+  return { az, alt, dir: enu(az, alt), distKm: eq.dist * A.KM_PER_AU };
+}
+
+export function sunMoon(date, obs) {
+  const t = toTime(date);
+  const s = bodyPos(A.Body.Sun, t, obs);
+  const m = bodyPos(A.Body.Moon, t, obs);
+  const ill = A.Illumination(A.Body.Moon, t);
+  return {
+    sun: { az: s.az, alt: s.alt, dir: s.dir, radius: Math.asin(R_SUN_KM / s.distKm) },
+    moon: { az: m.az, alt: m.alt, dir: m.dir, radius: Math.asin(R_MOON_KM / m.distKm),
+            phaseAngle: ill.phase_angle * D2R, fraction: ill.phase_fraction },
+  };
+}
+
+export function path(body, obs, startDate, hours = 24, stepMin = 10) {
+  const out = [];
+  const t0 = startDate.getTime(), n = Math.round(hours * 60 / stepMin);
+  for (let i = 0; i <= n; i++) {
+    const date = new Date(t0 + i * stepMin * 60000);
+    const p = bodyPos(body, A.MakeTime(date), obs);
+    out.push({ date, az: p.az, alt: p.alt, dir: p.dir });
+  }
+  return out;
+}
+
+// Milky Way model. Choice for the core: it is NOT in `points`; it is a separate
+// entry `core = {gal: A.Vector, w: 1}` at l = 0, b = 0 (the grid also holds a
+// point there, so the band is unchanged).
+export function milkyWay() {
+  const points = [];
+  for (let l = 0; l < 360; l += 3) {
+    const dl = l > 180 ? l - 360 : l;
+    const sigma = 5 + 5 * Math.exp(-0.5 * (dl / 25) ** 2);
+    const wl = 0.25 + 0.75 * Math.exp(-0.5 * (dl / 35) ** 2);
+    for (let b = -12; b <= 12; b += 3) {
+      const w = Math.exp(-0.5 * (b / sigma) ** 2) * wl;
+      const cb = Math.cos(b * D2R);
+      points.push({ gal: new A.Vector(cb * Math.cos(l * D2R), cb * Math.sin(l * D2R), Math.sin(b * D2R), null), w });
+    }
+  }
+  return { points, core: { gal: new A.Vector(1, 0, 0, null), w: 1 } };
+}
+
+const vecEnu = v => [-v.y, v.x, v.z];
+
+// -> {dirs: Float32Array (3 per point, ENU), core: [e, n, u]}
+// Takes the object returned by milkyWay() (or just its points array; then core is null).
+export function milkyWayAt(mw, date, obs) {
+  const points = Array.isArray(mw) ? mw : mw.points;
+  const t = toTime(date);
+  const m = A.CombineRotation(A.Rotation_GAL_EQJ(), A.Rotation_EQJ_HOR(t, obs));
+  const dirs = new Float32Array(points.length * 3);
+  points.forEach((p, i) => {
+    const [e, n, u] = vecEnu(A.RotateVector(m, p.gal));
+    dirs[3 * i] = e; dirs[3 * i + 1] = n; dirs[3 * i + 2] = u;
+  });
+  const core = Array.isArray(mw) || !mw.core ? null : vecEnu(A.RotateVector(m, mw.core.gal));
+  return { dirs, core };
+}
+
+// Sea-level rise and set within the 24 h from dayStart: {rise: Date|null, set: Date|null}
+export function riseSet(body, obs, dayStart) {
+  const t = toTime(dayStart);
+  const r = A.SearchRiseSet(body, obs, +1, t, 1);
+  const s = A.SearchRiseSet(body, obs, -1, t, 1);
+  return { rise: r ? r.date : null, set: s ? s.date : null };
+}
+
+export function sunBand(altDeg) {
+  if (altDeg > 6) return 'day';
+  if (altDeg > -4) return 'golden';
+  if (altDeg > -6) return 'blue';
+  if (altDeg > -12) return 'nautical';
+  if (altDeg > -18) return 'astro';
+  return 'night';
+}
