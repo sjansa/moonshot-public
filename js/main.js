@@ -1,14 +1,14 @@
 // main.js -- state, wiring, readouts, URL state, startup. The menu (menu.js) gets the functions it needs through initMenu().
-import { observer, sunMoon, altAz, path, Body, milkyWay, milkyWayAt } from './astro.js?v=1115.1822-4403c80';
-import * as TZ from './tz.js?v=1115.1822-4403c80';
-import { Ruler } from './ruler.js?v=1115.1822-4403c80';
-import { makeHorizon, terrainEvents, hidden } from './horizon.js?v=1115.1822-4403c80';
-import { DEMO, demoTerrain } from './demo.js?v=1115.1822-4403c80';
-import { draw } from './draw.js?v=1115.1822-4403c80';
-import { clampView, attachGestures } from './view.js?v=1115.1822-4403c80';
-import { SENSORS } from './optics.js?v=1115.1822-4403c80';
-import { listPlaces, openPlace, getLastPlaceId, setLastPlaceId } from './places.js?v=1115.1822-4403c80';
-import { initMenu } from './menu.js?v=1115.1822-4403c80';
+import { observer, sunMoon, altAz, path, Body, milkyWay, milkyWayAt } from './astro.js?v=1115.1836-90d6dbb';
+import * as TZ from './tz.js?v=1115.1836-90d6dbb';
+import { Ruler } from './ruler.js?v=1115.1836-90d6dbb';
+import { makeHorizon, terrainEvents, hidden } from './horizon.js?v=1115.1836-90d6dbb';
+import { DEMO, demoTerrain } from './demo.js?v=1115.1836-90d6dbb';
+import { draw } from './draw.js?v=1115.1836-90d6dbb';
+import { clampView, attachGestures } from './view.js?v=1115.1836-90d6dbb';
+import { SENSORS } from './optics.js?v=1115.1836-90d6dbb';
+import { listPlaces, openPlace, getLastPlaceId, setLastPlaceId } from './places.js?v=1115.1836-90d6dbb';
+import { initMenu } from './menu.js?v=1115.1836-90d6dbb';
 
 const R2D = 180 / Math.PI;
 

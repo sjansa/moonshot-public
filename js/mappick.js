@@ -3,7 +3,7 @@
 // pickSpot() resolves to {lat, lon, name} or null (canceled). A native picker
 // can replace Leaflet: if the Capacitor 'SpotPicker' plugin exists it is used.
 
-import { whereAmI } from './places.js?v=1115.1822-4403c80';
+import { whereAmI } from './places.js?v=1115.1836-90d6dbb';
 
 const LINE_KM = 20;
 let leafletReady = null;

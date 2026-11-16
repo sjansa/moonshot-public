@@ -1,12 +1,13 @@
 // horizon.js -- skyline of a place and terrain rise/set. No DOM.
-import { buildPano, chainCrests, TAU } from '../core/terrain.js?v=1115.1822-4403c80';
+import { buildPano, chainCrests, TAU } from '../core/terrain.js?v=1115.1836-90d6dbb';
 
-// Interior crests that stand less than this far above or below eye level are
-// ground ripple (a field's swell, a levee, sampling noise at the edge of the
-// fine grid), not ridges. On gentle ground a 15 m swell 1 km away hides the
-// whole plain behind it, so it chains into a long, straight line that reads as
-// an artifact in the picture. Real ridgelines stand hundreds of meters up.
-export const MIN_RIDGE_M = 30;
+// Which interior crests are drawn as ridges. Seen from a valley, every low
+// swell and bench within a couple of km hides the plain behind it and chains
+// into a line near level; from Sandy there are dozens of them, 30 to 90 m up,
+// and they read as clutter under the real mountains. Ridges that shape the
+// picture stand well above the eye, and run for more than a degree or two.
+export const MIN_RIDGE_M = 100;        // median height above or below eye level
+export const MIN_RIDGE_COLS = 15;      // length in azimuth columns (0.1 degree each)
 
 /** Median height of a chain's crest points relative to eye level, meters (absolute value). */
 function ridgeHeight(r) {
@@ -21,7 +22,7 @@ function ridgeHeight(r) {
  */
 export function makeHorizon(terrain, lat, lon, eyeM = 1.7, maxDist = 60000) {
   const pano = buildPano(terrain, lat, lon, { eye: eyeM, maxDist });
-  const ridges = chainCrests(pano).filter(r => ridgeHeight(r) >= MIN_RIDGE_M).map(r => ({ cols: r.cols, t: r.t, d: r.d }));
+  const ridges = chainCrests(pano).filter(r => r.cols.length >= MIN_RIDGE_COLS && ridgeHeight(r) >= MIN_RIDGE_M).map(r => ({ cols: r.cols, t: r.t, d: r.d }));
   return { lat, lon, hEye: pano.hEye, na: pano.na, skyT: pano.skyT, skyD: pano.skyD, ridges };
 }
 

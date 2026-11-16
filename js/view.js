@@ -1,6 +1,6 @@
 // view.js -- where the screen looks, and the gestures that move it.
-import { Camera, rotFromYPR } from '../core/camera.js?v=1115.1822-4403c80';
-import { SENSORS, frameSize, fovDeg } from './optics.js?v=1115.1822-4403c80';
+import { Camera, rotFromYPR } from '../core/camera.js?v=1115.1836-90d6dbb';
+import { SENSORS, frameSize, fovDeg } from './optics.js?v=1115.1836-90d6dbb';
 
 const R2D = 180 / Math.PI;
 

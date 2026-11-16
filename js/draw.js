@@ -1,8 +1,8 @@
 // draw.js -- everything painted on the canvas (PLAN 7.2, 7.3). All sizes are device pixels.
-import { skyTAt } from './horizon.js?v=1115.1822-4403c80';
-import { screenCamera, cameraGeometry } from './view.js?v=1115.1822-4403c80';
-import { format as tzFormat } from './tz.js?v=1115.1822-4403c80';
-import { TAU, D2R } from '../core/terrain.js?v=1115.1822-4403c80';
+import { skyTAt } from './horizon.js?v=1115.1836-90d6dbb';
+import { screenCamera, cameraGeometry } from './view.js?v=1115.1836-90d6dbb';
+import { format as tzFormat } from './tz.js?v=1115.1836-90d6dbb';
+import { TAU, D2R } from '../core/terrain.js?v=1115.1836-90d6dbb';
 
 const clamp01 = x => Math.min(1, Math.max(0, x));
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -233,7 +233,10 @@ function drawAim(ctx, S, sw, sh, k, geo) {
   const cx = sw / 2, cy = sh / 2, a = 6 * k, b = 13 * k, v = S.view;
   ctx.save();
   ctx.lineCap = 'round';
-  for (const [c, lw] of [['rgba(0,0,0,0.5)', 3.2], ['rgba(255,255,255,0.8)', 1.4]]) {
+  // a sun or moon disc at the center is the subject: do not draw the cross over it
+  const P = [0, 0], covered = ['sun', 'moon'].some(n => S.show[n] && S.sm && S.cam.project(...S.sm[n].dir, sw, sh, P)
+    && Math.hypot(P[0] - cx, P[1] - cy) < Math.tan(S.sm[n].radius) * S.cam.fn * sw + b && Math.tan(S.sm[n].radius) * S.cam.fn * sw > a);
+  if (!covered) for (const [c, lw] of [['rgba(0,0,0,0.5)', 3.2], ['rgba(255,255,255,0.8)', 1.4]]) {
     ctx.strokeStyle = c; ctx.lineWidth = lw * k; ctx.beginPath();
     ctx.moveTo(cx - b, cy); ctx.lineTo(cx - a, cy); ctx.moveTo(cx + a, cy); ctx.lineTo(cx + b, cy);
     ctx.moveTo(cx, cy - b); ctx.lineTo(cx, cy - a); ctx.moveTo(cx, cy + a); ctx.lineTo(cx, cy + b);

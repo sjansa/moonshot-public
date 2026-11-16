@@ -1,9 +1,9 @@
 // menu.js -- the Menu sheet: Place, Camera, Display, Info tabs. Built once from the app's
 // functions (passed in by main.js, so there is no import cycle).
-import { whereAmI, terrainEstimate, createPlace, listPlaces, openPlace, removePlace, updatePlace, storageUse } from './places.js?v=1115.1822-4403c80';
-import { pickSpot } from './mappick.js?v=1115.1822-4403c80';
-import { SENSORS, FOCALS, frameSize, fovDeg } from './optics.js?v=1115.1822-4403c80';
-import { validZone, getZone } from './tz.js?v=1115.1822-4403c80';
+import { whereAmI, terrainEstimate, createPlace, listPlaces, openPlace, removePlace, updatePlace, storageUse } from './places.js?v=1115.1836-90d6dbb';
+import { pickSpot } from './mappick.js?v=1115.1836-90d6dbb';
+import { SENSORS, FOCALS, frameSize, fovDeg } from './optics.js?v=1115.1836-90d6dbb';
+import { validZone, getZone } from './tz.js?v=1115.1836-90d6dbb';
 
 const R2D = 180 / Math.PI;
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
