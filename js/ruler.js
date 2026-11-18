@@ -6,7 +6,7 @@
 // a jump and the selected span returns on release. The haptic tick is opts.haptic.
 // Only import: skyglyph.js (moon + Milky Way glyph in the readout). See PLAN.md section 8.
 
-import { makeSkyGlyph, drawPhase } from './skyglyph.js?v=1117.2337-166b81d';
+import { makeSkyGlyph, drawPhase } from './skyglyph.js?v=1118.0316-c1b486d';
 
 export const SPANS = [2 * 3600e3, 12 * 3600e3, 3 * 86400e3, 30 * 86400e3];
 const SPAN_LABELS = ['2h', '12h', '3d', '30d'];
@@ -102,12 +102,20 @@ function injectStyle() {
 .rl-read:focus-within { outline: 2px solid var(--go, #3fb6ff); outline-offset: 2px; }
 .rl-rd { font: 500 11px/1 var(--body, system-ui, sans-serif); color: #c9d6dd; white-space: nowrap; pointer-events: none; }
 .rl-rt { font: 700 19px/1 var(--display, "Barlow Condensed", "Helvetica Neue", Arial, sans-serif); letter-spacing: .04em; white-space: nowrap; pointer-events: none; }
+.rl-grp, .rl-read, .rl-tx, .rl-rd, .rl-rt, .rl-read > span:first-child { transition: all .45s cubic-bezier(.32,.72,0,1); }
+.rl-compact .rl-grp { opacity: 0; transform: translateY(-14px) scale(.85); pointer-events: none; }
+.rl-compact .rl-read { height: 26px; top: 1px; padding: 0 9px; gap: 4px; border-radius: 9px; }
+.rl-compact .rl-tx { display: flex; gap: 6px; align-items: baseline; }
+.rl-compact .rl-rd { font-size: 11px; }
+.rl-compact .rl-rt { font-size: 15px; }
+.rl-compact .rl-read > span:first-child { transform: scale(.72); margin: 0 -5px; }
+@media (prefers-reduced-motion: reduce) { .rl-grp, .rl-read, .rl-tx, .rl-rd, .rl-rt, .rl-read > span:first-child { transition: none; } }
 .rl-date { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; padding: 0; margin: 0; font-size: 16px; }
 `;
   document.head.appendChild(s);
 }
 
-const ROW = 48;   // height of the top row (buttons, readout); the scale is below it
+const SCALE_H = 48;   // height of the sliding scale; the top row (buttons, readout) takes the rest (48 px, or less when compact)
 
 // ---------- component ----------
 
@@ -294,6 +302,9 @@ export class Ruler {
     this._schedule();
   }
 
+  /** Compact: no buttons, a small one-line readout; the container sets the height (the scale keeps 48 px). */
+  setCompact(on) { this.el.classList.toggle('rl-compact', !!on); }
+
   /** Stop observing and drawing (the container can then be removed). */
   destroy() { this._ro?.disconnect(); this._stopFling(); this._clearLP(); if (this._raf) cancelAnimationFrame(this._raf); this._raf = 0; }
 
@@ -410,7 +421,7 @@ export class Ruler {
   }
 
   _draw() {
-    const ctx = this.ctx, W = this._w, H = this._h, dpr = this._dpr;
+    const ctx = this.ctx, W = this._w, H = this._h, dpr = this._dpr, ROW = Math.max(0, H - SCALE_H);
     if (!W) return;
     const t = +this.time, span = this._curSpan();
     this._ensureCaches(t);

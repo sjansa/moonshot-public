@@ -4,13 +4,13 @@
 // Fidelity follows the map: the grid under the screen is the finest terrain that fits in 16
 // tiles (Terrarium z15, 3 to 5 m, once the view is a few hundred metres across); two wider,
 // coarser grids around it (4 km and 40 km margins) carry shadows in from ridges off screen.
-import * as astro from './astro.js?v=1117.2337-166b81d';
-import * as TZ from './tz.js?v=1117.2337-166b81d';
-import { Ruler } from './ruler.js?v=1117.2337-166b81d';
-import { tick } from './haptic.js?v=1117.2337-166b81d';
-import { fetchElevGrid, gridTiles, MAX_ZOOM } from './elev.js?v=1117.2337-166b81d';
-import { pxToLonLat } from './solver.js?v=1117.2337-166b81d';
-import { altLattice, castNested } from './shadow.js?v=1117.2337-166b81d';
+import * as astro from './astro.js?v=1118.0316-c1b486d';
+import * as TZ from './tz.js?v=1118.0316-c1b486d';
+import { Ruler } from './ruler.js?v=1118.0316-c1b486d';
+import { tick } from './haptic.js?v=1118.0316-c1b486d';
+import { fetchElevGrid, gridTiles, MAX_ZOOM } from './elev.js?v=1118.0316-c1b486d';
+import { pxToLonLat } from './solver.js?v=1118.0316-c1b486d';
+import { altLattice, castNested } from './shadow.js?v=1118.0316-c1b486d';
 
 const R2D = 180 / Math.PI, D2R = Math.PI / 180;
 const MIN_MAP_ZOOM = 7;                       // wider than this the shading is not worth the download
@@ -40,9 +40,10 @@ export function attachShadows(L, map, ui) {
     return b;
   });
   const info = document.createElement('span'); info.className = 'mp-small'; info.style.cssText = 'flex:1;min-width:0;text-align:right';
-  row.append(...chips, info);
-  const rEl = document.createElement('div'); rEl.style.cssText = 'height:96px;border-radius:14px;border:1px solid #26404f;margin-top:6px';
-  ui.panel.append(row, rEl);
+  const seg = document.createElement('div'); seg.className = 'mp-seg'; seg.style.flex = '0 0 150px'; seg.append(...chips);
+  row.append(seg, info); row.style.paddingBottom = '6px';
+  const rEl = document.createElement('div'); rEl.className = 'mp-ruler';
+  ui.panel.append(ui.fold ? ui.fold(row) : row, rEl);
 
   const dayStart = d => TZ.dayStart(d);
   const markCache = new Map();
@@ -112,7 +113,7 @@ export function attachShadows(L, map, ui) {
     }, delay);
   };
   const onMove = () => { refetch(); ruler.invalidate(); };
-  map.on('moveend', onMove);
+  map.on('moveend resize', onMove);
 
   // ---- shadows ----------------------------------------------------------------------------
   const recompute = () => {
@@ -151,9 +152,11 @@ export function attachShadows(L, map, ui) {
     show(on) {
       st.on = !!on;
       ui.panel.style.display = st.on ? '' : 'none';
-      if (st.on) { ruler.resize(); refetch(0); recompute(); } else { clearTimeout(st.timer); overlay?.remove(); }
+      if (st.on) { map.invalidateSize(); ruler.resize(); refetch(0); recompute(); } else { clearTimeout(st.timer); overlay?.remove(); }
     },
-    destroy() { clearTimeout(st.timer); st.fetchCtl?.abort(); if (st.raf) cancelAnimationFrame(st.raf); map.off('moveend', onMove); ruler.destroy(); overlay?.remove(); },
+    destroy() { clearTimeout(st.timer); st.fetchCtl?.abort(); if (st.raf) cancelAnimationFrame(st.raf); map.off('moveend resize', onMove); ruler.destroy(); overlay?.remove(); },
+    /** Small ruler: just the scale and a one-line date, time and moon phase. */
+    setCompact(on) { ruler.setCompact(on); },
     get changed() { return st.changed; },
     get time() { return st.time; },
   };

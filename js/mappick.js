@@ -6,14 +6,14 @@
 // (in spot mode only). Shadows mode (shadowmap.js) shades the terrain shadows of the sun or the
 // moon at a time on its own time ruler; opts.onTime(date) gets that time on close if it was moved.
 
-import { whereAmI } from './places.js?v=1117.2337-166b81d';
-import * as astro from './astro.js?v=1117.2337-166b81d';
-import * as TZ from './tz.js?v=1117.2337-166b81d';
-import { tick } from './haptic.js?v=1117.2337-166b81d';
-import { makeSkyGlyph } from './skyglyph.js?v=1117.2337-166b81d';
-import { fetchElevGrid } from './elev.js?v=1117.2337-166b81d';
-import { attachShadows } from './shadowmap.js?v=1117.2337-166b81d';
-import { bodyTrack, solveGrid, solveSpot, elevAt, lonLatToPx, pxToLonLat } from './solver.js?v=1117.2337-166b81d';
+import { whereAmI } from './places.js?v=1118.0316-c1b486d';
+import * as astro from './astro.js?v=1118.0316-c1b486d';
+import * as TZ from './tz.js?v=1118.0316-c1b486d';
+import { tick } from './haptic.js?v=1118.0316-c1b486d';
+import { makeSkyGlyph } from './skyglyph.js?v=1118.0316-c1b486d';
+import { fetchElevGrid } from './elev.js?v=1118.0316-c1b486d';
+import { attachShadows } from './shadowmap.js?v=1118.0316-c1b486d';
+import { bodyTrack, solveGrid, solveSpot, elevAt, lonLatToPx, pxToLonLat } from './solver.js?v=1118.0316-c1b486d';
 
 const LINE_KM = 20;
 let leafletReady = null;
@@ -35,46 +35,85 @@ function loadLeaflet() {
   return leafletReady;
 }
 
+// iOS-style materials: the map fills the sheet and the controls float over it, translucent and blurred.
 const CSS = `
-.mp-root{position:fixed;inset:0;z-index:2000;display:flex;flex-direction:column;background:#0c1a22;color:#e6eef2;font:15px/1.3 Barlow,system-ui,-apple-system,sans-serif}
-.mp-root *{box-sizing:border-box}
-.mp-bar{display:flex;gap:8px;padding:calc(env(safe-area-inset-top) + 8px) calc(env(safe-area-inset-right) + 10px) 8px calc(env(safe-area-inset-left) + 10px);background:rgba(12,26,34,.96);border-bottom:1px solid #26404f}
-.mp-bar input{flex:1;min-width:0;height:44px;padding:0 12px;border-radius:10px;border:1px solid #33505f;background:#14273a;color:inherit;font:inherit}
-.mp-btn{min-height:44px;min-width:44px;padding:0 14px;border-radius:10px;border:1px solid #33505f;background:#1b3447;color:inherit;font:inherit;cursor:pointer}
-.mp-btn:disabled{opacity:.4;cursor:default}
-.mp-btn.mp-go{background:#e8c66a;border-color:#e8c66a;color:#1a1405;font-weight:600}
-.mp-map{flex:1;min-height:0;background:#0c1a22}
-.mp-foot{padding:8px calc(env(safe-area-inset-right) + 10px) calc(env(safe-area-inset-bottom) + 8px) calc(env(safe-area-inset-left) + 10px);background:rgba(12,26,34,.96);border-top:1px solid #26404f}
-.mp-msg{min-height:20px;font-size:13px;color:#f0b0a0;margin-bottom:4px}
-.mp-msg.mp-ok{color:#9fb6c3}
+.mp-root{--mat:rgba(16,30,40,.62);--fill:rgba(118,128,140,.24);--fill2:rgba(255,255,255,.14);--hair:rgba(255,255,255,.12);--txt:#f2f6f8;--dim:#a9bac4;--acc:#e8c66a;--blue:#3fb6ff;--mp-top:0px;--mp-bot:0px;--ease:cubic-bezier(.32,.72,0,1);
+  position:fixed;inset:0;z-index:2000;background:#0c1a22;color:var(--txt);font:15px/1.3 Barlow,system-ui,-apple-system,sans-serif;overflow:hidden}
+.mp-root *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+.mp-mat{background:var(--mat);-webkit-backdrop-filter:blur(22px) saturate(170%);backdrop-filter:blur(22px) saturate(170%)}
+.mp-map{position:absolute;inset:0;background:#0c1a22}
+.mp-head{position:absolute;left:0;right:0;top:0;z-index:1000;border-bottom:.5px solid var(--hair);transition:transform .45s var(--ease),opacity .3s ease}
+.mp-bar{display:flex;gap:8px;padding:calc(env(safe-area-inset-top) + 8px) calc(env(safe-area-inset-right) + 12px) 6px calc(env(safe-area-inset-left) + 12px)}
+.mp-bar input{flex:1;min-width:0;height:40px;padding:0 12px 0 34px;border-radius:12px;border:0;background:var(--fill) no-repeat 11px 50%/16px url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a9bac4' stroke-width='2.4' stroke-linecap='round'%3E%3Ccircle cx='10.5' cy='10.5' r='6.5'/%3E%3Cpath d='M15.5 15.5L21 21'/%3E%3C/svg%3E");color:inherit;font:inherit;font-size:16px;outline:none}
+.mp-bar input::placeholder{color:var(--dim)}
+.mp-bar input:focus{box-shadow:0 0 0 2px rgba(63,182,255,.55)}
+.mp-btn{min-height:44px;min-width:44px;padding:0 16px;border-radius:12px;border:0;background:var(--fill2);color:inherit;font:inherit;font-weight:500;cursor:pointer;transition:background .15s,transform .1s}
+.mp-btn:active{transform:scale(.97);background:rgba(255,255,255,.22)}
+.mp-btn:disabled{opacity:.4;cursor:default;transform:none}
+.mp-bar .mp-btn{min-height:40px;background:none;color:var(--blue);padding:0 4px}
+.mp-btn.mp-go{background:var(--acc);color:#1a1405;font-weight:600}
+.mp-foot{position:absolute;left:0;right:0;bottom:0;z-index:1000;padding:0 calc(env(safe-area-inset-right) + 12px) calc(env(safe-area-inset-bottom) + 8px) calc(env(safe-area-inset-left) + 12px);border-top:.5px solid var(--hair);border-radius:18px 18px 0 0}
+.mp-grab{display:none;width:100%;height:22px;margin:0;padding:0;border:0;background:none;cursor:pointer;place-items:center}
+.mp-grab span{display:block;width:38px;height:5px;border-radius:3px;background:rgba(255,255,255,.38);transition:background .15s,width .2s}
+.mp-grab:hover span,.mp-grab:focus-visible span{background:rgba(255,255,255,.6)}
+.mp-shadow .mp-grab{display:grid}
+.mp-root:not(.mp-shadow) .mp-foot{padding-top:8px}
+.mp-msg{font-size:13px;color:#f0b0a0;margin:2px 0 4px}
+.mp-msg:empty{display:none}
+.mp-msg.mp-ok{color:var(--dim)}
+.mp-fold{display:grid;grid-template-rows:1fr;transition:grid-template-rows .45s var(--ease),opacity .3s ease}
+.mp-fold>div{min-height:0;overflow:hidden}
+.mp-min .mp-fold{grid-template-rows:0fr;opacity:0}
+.mp-min .mp-head{transform:translateY(-105%);opacity:0;pointer-events:none}
 .mp-row{display:flex;gap:8px;align-items:center}
-.mp-pos{flex:1;font-variant-numeric:tabular-nums;font-size:13px;color:#9fb6c3;min-width:0;margin-bottom:6px}
-.mp-root .leaflet-control-attribution{background:rgba(12,26,34,.8);color:#9fb6c3}
-.mp-root .leaflet-control-attribution a{color:#e8c66a}
-.mp-modes{display:flex;gap:6px;padding:6px calc(env(safe-area-inset-right) + 10px) 6px calc(env(safe-area-inset-left) + 10px);background:rgba(12,26,34,.96)}
-.mp-chip{min-height:40px;padding:0 11px;border-radius:20px;border:1px solid #33505f;background:#14273a;color:inherit;font:inherit;font-size:14px;cursor:pointer}
-.mp-chip[aria-pressed=true]{background:#e8c66a;border-color:#e8c66a;color:#1a1405;font-weight:600}
-.mp-modes .mp-chip{flex:1}
-.mp-panel{display:flex;flex-direction:column;gap:4px;margin-bottom:6px}
+.mp-pos{flex:1;font-variant-numeric:tabular-nums;font-size:13px;color:var(--dim);min-width:0;padding:6px 0}
+.mp-modes{display:flex;padding:2px 0 8px;margin:0 calc(env(safe-area-inset-right) + 12px) 0 calc(env(safe-area-inset-left) + 12px)}
+.mp-seg{display:flex;flex:1;gap:2px;padding:2px;border-radius:10px;background:var(--fill)}
+.mp-seg .mp-chip{flex:1;min-height:32px;border-radius:8px;border:0;background:none;color:var(--txt);font-size:14px;font-weight:500;transition:background .2s,box-shadow .2s}
+.mp-seg .mp-chip[aria-pressed=true]{background:rgba(255,255,255,.24);color:#fff;font-weight:600;box-shadow:0 3px 8px rgba(0,0,0,.2),0 0 0 .5px rgba(0,0,0,.08)}
+.mp-chip{min-height:36px;padding:0 12px;border-radius:18px;border:0;background:var(--fill2);color:inherit;font:inherit;font-size:14px;cursor:pointer}
+.mp-chip[aria-pressed=true]{background:var(--acc);color:#1a1405;font-weight:600}
+.mp-panel{display:flex;flex-direction:column;gap:4px;margin-bottom:4px}
 .mp-panel .mp-row{flex-wrap:wrap;gap:6px}
-.mp-panel .mp-sep{width:1px;height:20px;background:#33505f}
-.mp-small{font-size:13px;color:#9fb6c3}
-.mp-num{width:64px;height:40px;padding:0 6px;border-radius:10px;border:1px solid #33505f;background:#14273a;color:inherit;font:inherit}
-.mp-day{flex:1;min-width:80px;height:40px;accent-color:#e8c66a}
-.mp-dl{min-width:96px;font-size:12px;line-height:1.2;text-align:right;color:#e6eef2}
+.mp-panel .mp-sep{width:1px;height:20px;background:var(--hair)}
+.mp-small{font-size:13px;color:var(--dim)}
+.mp-num{width:64px;height:36px;padding:0 8px;border-radius:10px;border:0;background:var(--fill);color:inherit;font:inherit}
+.mp-day{flex:1;min-width:80px;height:40px;accent-color:var(--acc)}
+.mp-dl{min-width:96px;font-size:12px;line-height:1.2;text-align:right;color:var(--txt)}
 .mp-sq{min-width:40px;padding:0}
-.mp-loc{padding:0;display:grid;place-items:center}.mp-loc svg{width:22px;height:22px;fill:#3fb6ff;stroke:#3fb6ff;stroke-width:1.5;stroke-linejoin:round}
+.mp-loc{padding:0;display:grid;place-items:center}.mp-loc svg{width:22px;height:22px;fill:var(--blue);stroke:var(--blue);stroke-width:1.5;stroke-linejoin:round}
 .mp-tri{width:0;height:0;border-left:11px solid transparent;border-right:11px solid transparent;border-bottom:22px solid #e5483a;filter:drop-shadow(0 0 2px #fff)}
 .mp-shade{image-rendering:auto}
-.mp-root .leaflet-control-layers-toggle{background-image:none!important;width:44px;height:44px;display:grid;place-items:center;color:#14273a;font:600 13px/1 Barlow,system-ui,sans-serif;text-decoration:none}
-.mp-root .leaflet-control-layers-toggle::after{content:'Map'}
-.mp-root .leaflet-control-layers-expanded{padding:8px 12px;font:15px/2.2 Barlow,system-ui,sans-serif;color:#14273a}
+.mp-ruler{height:96px;border-radius:14px;overflow:hidden;transition:height .45s var(--ease)}
+.mp-ruler.rl-root{background:rgba(0,0,0,.22);border:0}
+.mp-min .mp-ruler{height:76px}
 .mp-lbl{background:rgba(12,26,34,.85);border:1px solid #33505f;color:#e6eef2}
+/* Leaflet controls: floating translucent buttons that keep clear of the bars */
+.mp-root .leaflet-top{top:var(--mp-top);transition:top .45s var(--ease)}
+.mp-root .leaflet-bottom{bottom:var(--mp-bot);transition:bottom .45s var(--ease)}
+.mp-root .leaflet-bar,.mp-root .leaflet-control-layers{border:0!important;border-radius:12px;overflow:hidden;background:var(--mat);-webkit-backdrop-filter:blur(22px) saturate(170%);backdrop-filter:blur(22px) saturate(170%);box-shadow:0 4px 16px rgba(0,0,0,.28),0 0 0 .5px var(--hair)}
+.mp-root .leaflet-bar a{width:44px;height:44px;line-height:44px;background:none;color:var(--txt);font:300 26px/44px -apple-system,system-ui,sans-serif;border-bottom:.5px solid var(--hair)}
+.mp-root .leaflet-bar a:last-child{border-bottom:0}
+.mp-root .leaflet-bar a:hover,.mp-root .leaflet-bar a:active{background:rgba(255,255,255,.12);color:#fff}
+.mp-root .leaflet-bar a.leaflet-disabled{background:none;color:rgba(255,255,255,.3)}
+.mp-root .leaflet-control-layers-toggle{width:44px;height:44px;background:center/22px no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23f2f6f8' stroke-width='1.8' stroke-linejoin='round'%3E%3Cpath d='M12 3l9 4.5-9 4.5-9-4.5z'/%3E%3Cpath d='M3 12l9 4.5 9-4.5' opacity='.75'/%3E%3Cpath d='M3 16.5L12 21l9-4.5' opacity='.5'/%3E%3C/svg%3E")!important}
+.mp-root .leaflet-control-layers-expanded{padding:6px 4px;min-width:170px;color:var(--txt);font:500 15px/1 Barlow,system-ui,sans-serif}
+.mp-root .leaflet-control-layers-base label{display:block;margin:0;padding:11px 12px;border-radius:8px;cursor:pointer}
+.mp-root .leaflet-control-layers-base label:hover{background:rgba(255,255,255,.1)}
+.mp-root .leaflet-control-layers-base label>span{display:flex;align-items:center;gap:10px}
+.mp-root .leaflet-control-layers-selector{appearance:none;-webkit-appearance:none;margin:0;width:18px;height:18px;border-radius:50%;border:1.5px solid rgba(255,255,255,.5);display:grid;place-items:center;top:0}
+.mp-root .leaflet-control-layers-selector:checked{border-color:var(--blue);background:radial-gradient(circle,var(--blue) 0 4.5px,transparent 5px)}
+.mp-root .leaflet-control-layers-separator{display:none}
+.mp-root .leaflet-control-attribution{background:rgba(12,26,34,.55);color:var(--dim);border-radius:8px 0 0 0;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+.mp-root .leaflet-control-attribution a{color:var(--acc)}
+@media (prefers-reduced-motion:reduce){.mp-root *{transition:none!important}}
+/* on its side: the controls are a column on the right */
 @media (orientation:landscape) and (max-height:520px){
-.mp-root{display:grid;grid-template-columns:1fr min(400px,48vw);grid-template-rows:auto auto 1fr;grid-template-areas:"map bar" "map modes" "map foot"}
-.mp-bar{grid-area:bar;border-left:1px solid #26404f}.mp-modes{grid-area:modes}.mp-map{grid-area:map;height:100%}
-.mp-foot{grid-area:foot;overflow-y:auto;border-top:0;border-left:1px solid #26404f}
-.mp-bar,.mp-modes,.mp-foot{padding-left:10px}.mp-msg:empty{display:none}}
+.mp-head,.mp-foot{left:auto;width:min(400px,48vw);border-left:.5px solid var(--hair)}
+.mp-head{border-radius:0 0 0 18px}
+.mp-foot{border-radius:18px 0 0 0;max-height:calc(100% - var(--mp-top));overflow-y:auto}
+.mp-root .leaflet-top,.mp-root .leaflet-bottom{top:auto;bottom:auto}.mp-root .leaflet-top{top:0}.mp-root .leaflet-bottom{bottom:0}
+.mp-root .leaflet-right{right:min(400px,48vw)}}
 `;
 
 function addStyles() {
@@ -112,8 +151,8 @@ export async function pickSpot(opts = {}) {
   input.type = 'search'; input.placeholder = 'Search for a place'; input.setAttribute('aria-label', 'Search for a place');
   input.enterKeyHint = 'search'; input.autocomplete = 'off';
   bar.append(input, find);
-  const mapEl = el('div', 'mp-map');
-  const foot = el('div', 'mp-foot'), msg = el('div', 'mp-msg', 'Loading the map…'), pos = el('div', 'mp-pos', 'Tap the map to place the spot.');
+  const head = el('div', 'mp-head mp-mat'), mapEl = el('div', 'mp-map');
+  const foot = el('div', 'mp-foot mp-mat'), msg = el('div', 'mp-msg', 'Loading the map…'), pos = el('div', 'mp-pos', 'Tap the map to place the spot.');
   const here = el('button', 'mp-btn mp-loc', ''), cancel = el('button', 'mp-btn', 'Cancel'), use = el('button', 'mp-btn mp-go', 'Use this spot');
   use.disabled = true;
   here.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 3L3 10.5l7.5 3 3 7.5z"/></svg>';
@@ -131,8 +170,8 @@ export async function pickSpot(opts = {}) {
     return mark;
   };
   const panel = el('div', 'mp-panel'), pr1 = el('div', 'mp-row'), pr2 = el('div', 'mp-row'), pr3 = el('div', 'mp-row');
-  const modes = el('div', 'mp-modes'), modeSpot = chip('Spot', true), modeSolver = chip('Solver', false), modeShadow = chip('Shadows', false);
-  modes.append(modeSpot, modeSolver, modeShadow);
+  const modes = el('div', 'mp-modes'), modeSeg = el('div', 'mp-seg'), modeSpot = chip('Spot', true), modeSolver = chip('Solver', false), modeShadow = chip('Shadows', false);
+  modeSeg.append(modeSpot, modeSolver, modeShadow); modes.append(modeSeg);
   const shPanel = el('div', 'mp-panel');
   const hInput = el('input', 'mp-num');
   hInput.type = 'number'; hInput.min = '0'; hInput.max = '1000'; hInput.step = '1'; hInput.value = '0'; hInput.inputMode = 'numeric';
@@ -144,8 +183,13 @@ export async function pickSpot(opts = {}) {
   dl.style.cssText = 'display:flex;align-items:center;justify-content:flex-end;gap:4px'; dl.append(gl.el, dt);
   pr3.append(prev, day, next, dl);
   panel.append(pr1, pr2, pr3);
-  foot.append(msg, panel, shPanel, pos, row2);
-  root.append(bar, modes, mapEl, foot);
+  // the tray handle (shadow mode): folds the sheet down to the time ruler and back
+  const grab = el('button', 'mp-grab'); grab.append(el('span'));
+  grab.setAttribute('aria-label', 'Show fewer controls'); grab.setAttribute('aria-expanded', 'true');
+  const fold = (...kids) => { const f = el('div', 'mp-fold'), inner = el('div'); inner.append(...kids); f.append(inner); return f; };
+  head.append(bar, modes);
+  foot.append(grab, msg, panel, shPanel, fold(pos, row2));
+  root.append(mapEl, head, foot);
   document.body.appendChild(root);
 
   const say = (t, ok) => { msg.textContent = t || ''; msg.className = 'mp-msg' + (ok ? ' mp-ok' : ''); };
@@ -155,6 +199,22 @@ export async function pickSpot(opts = {}) {
     return new Promise(res => { cancel.onclick = () => { root.remove(); res(null); }; use.disabled = true; find.disabled = true; here.disabled = true; });
   }
   const L = window.L;
+  // keep the map's own buttons clear of the bars, also while they slide
+  const insets = () => {
+    const side = matchMedia('(orientation:landscape) and (max-height:520px)').matches, min = root.classList.contains('mp-min');
+    root.style.setProperty('--mp-top', min ? 'env(safe-area-inset-top, 0px)' : `${head.offsetHeight}px`);
+    root.style.setProperty('--mp-bot', `${side ? 0 : foot.offsetHeight}px`);
+  };
+  const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(insets) : null;
+  ro?.observe(head); ro?.observe(foot);
+  insets();
+  const setMin = on => {
+    root.classList.toggle('mp-min', on);
+    grab.setAttribute('aria-expanded', String(!on)); grab.setAttribute('aria-label', on ? 'Show all controls' : 'Show fewer controls');
+    shadows?.setCompact(on); insets();
+  };
+  let shadows = null;
+  grab.onclick = () => setMin(!root.classList.contains('mp-min'));
   const hasStart = Number.isFinite(opts.lat) && Number.isFinite(opts.lon);
   const map = L.map(mapEl, { zoomControl: true, attributionControl: true })
     .setView(hasStart ? [opts.lat, opts.lon] : [30, 0], opts.zoom ?? (hasStart ? 12 : 2));
@@ -244,7 +304,7 @@ export async function pickSpot(opts = {}) {
   const hLbl = el('span', 'mp-small', 'Height m'); hLbl.title = 'Subject height above ground (m)';
   pr2.append(el('div', 'mp-sep'), hLbl, hInput);
   const markMode = () => [[modeSpot, 'spot'], [modeSolver, 'solver'], [modeShadow, 'shadow']].forEach(([b, k]) => b.setAttribute('aria-pressed', String(S.mode === k)));
-  const shadows = attachShadows(L, map, { panel: shPanel, say, date: opts.date, chip });
+  shadows = attachShadows(L, map, { panel: shPanel, say, date: opts.date, chip, fold });
 
   const heightM = () => Math.max(0, +hInput.value || 0);
   const subjIcon = L.divIcon({ className: '', html: '<div class="mp-tri"></div>', iconSize: [22, 22], iconAnchor: [11, 20] });
@@ -383,6 +443,8 @@ export async function pickSpot(opts = {}) {
 
   const applyMode = () => {
     markMode();
+    if (S.mode !== 'shadow' && root.classList.contains('mp-min')) setMin(false);
+    root.classList.toggle('mp-shadow', S.mode === 'shadow');
     shadows.show(S.mode === 'shadow');
     drawLines();
     panel.style.display = solverOn() ? '' : 'none';
@@ -439,7 +501,7 @@ export async function pickSpot(opts = {}) {
   return new Promise(resolve => {
     const done = v => {
       if (shadows.changed) opts.onTime?.(shadows.time);
-      shadows.destroy(); map.remove(); root.remove(); resolve(v);
+      ro?.disconnect(); shadows.destroy(); map.remove(); root.remove(); resolve(v);
     };
     cancel.onclick = () => done(null);
     use.onclick = () => {
