@@ -16,8 +16,8 @@
 //
 // No DOM: frames are {w, h, data: RGBA bytes}.
 
-import { D2R, R2D, TAU } from './terrain.js?v=1116.1400-424dc31';
-import { Camera, matMul, yawMat, pitchRollMat } from './camera.js?v=1116.1400-424dc31';
+import { D2R, R2D, TAU } from './terrain.js?v=1117.2337-166b81d';
+import { Camera, matMul, yawMat, pitchRollMat } from './camera.js?v=1117.2337-166b81d';
 
 const SKY_CAP = 8;          // px at analysis width 320: truncation for skyline error
 const EDGE_CAP = 6;

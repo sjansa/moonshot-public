@@ -1,5 +1,5 @@
 // elev.js -- elevation grids from AWS Terrarium tiles (browser). See solver.js for the grid shape.
-import { lonLatToPx } from './solver.js?v=1116.1400-424dc31';
+import { lonLatToPx } from './solver.js?v=1117.2337-166b81d';
 
 const URL_T = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';
 const CACHE_MAX = 64, cache = new Map();   // key -> Float32Array(65536), insertion-ordered (oldest first)
@@ -27,16 +27,22 @@ async function tile(z, x, y, signal) {
 }
 
 /** bbox [w, s, e, n] -> {nx, ny, data (m, row 0 north), x0, y0, z}, whole tiles, zoom <= maxZoom with <= maxTiles tiles. */
-export async function fetchElevGrid(bbox, { maxTiles = 16, maxZoom = 12, signal } = {}) {
-  const [w, s, e, n] = bbox;
-  let z = maxZoom, tx0, tx1, ty0, ty1;
+export const MAX_ZOOM = 15;               // the finest Terrarium tiles (about 3 to 5 m)
+
+/** The tiles fetchElevGrid would use for bbox: {z, tx0, tx1, ty0, ty1}. */
+export function gridTiles([w, s, e, n], { maxTiles = 16, maxZoom = 12 } = {}) {
+  let z = Math.min(maxZoom, MAX_ZOOM), tx0, tx1, ty0, ty1;
   for (; z >= 0; z--) {
     const a = lonLatToPx(w, n, z), b = lonLatToPx(e, s, z), top = 2 ** z - 1;
     tx0 = Math.max(0, Math.floor(a.x / 256)); tx1 = Math.min(top, Math.floor(b.x / 256));
     ty0 = Math.max(0, Math.floor(a.y / 256)); ty1 = Math.min(top, Math.floor(b.y / 256));
     if ((tx1 - tx0 + 1) * (ty1 - ty0 + 1) <= maxTiles) break;
   }
-  z = Math.max(z, 0);
+  return { z: Math.max(z, 0), tx0, tx1, ty0, ty1 };
+}
+
+export async function fetchElevGrid(bbox, { maxTiles = 16, maxZoom = 12, signal } = {}) {
+  const { z, tx0, tx1, ty0, ty1 } = gridTiles(bbox, { maxTiles, maxZoom });
   const cols = tx1 - tx0 + 1, rows = ty1 - ty0 + 1, nx = cols * 256, ny = rows * 256;
   const data = new Float32Array(nx * ny), jobs = [];
   for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++) {

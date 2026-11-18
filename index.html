@@ -26,6 +26,30 @@
   [hidden] { display: none !important; }
   #stage, #stage canvas, #arVideo { position: fixed; inset: 0; width: 100%; height: 100%; touch-action: none; -webkit-user-select: none; user-select: none; }
   #arVideo { object-fit: cover; background: #000; pointer-events: none; }
+  #arFrame { object-fit: contain; background: #000; pointer-events: none; position: fixed; inset: 0; width: 100%; height: 100%; }
+  #arCompass { pointer-events: auto; align-self: flex-start; color: var(--text); font: 600 14px var(--body); border-color: #ff5a4a; }
+  body.cam-on #lines { display: none; }
+  /* USB camera controls: a row above the ruler; a column on the left when the phone is on its side */
+  #camCtl { position: fixed; left: calc(var(--sl) + 8px); right: calc(var(--sr) + 8px); bottom: calc(var(--sb) + 188px); display: flex; gap: 6px; align-items: center; justify-content: center; flex-wrap: wrap; z-index: 4; }
+  #camCtl .cc-v { min-height: 40px; min-width: 56px; padding: 4px 8px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); color: var(--text); font: 700 14px var(--display); letter-spacing: .03em; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+  #camCtl .cc-v:disabled { opacity: .55; }
+  #camCtl .cc-mode, #camCtl .cc-bat { font: 700 13px var(--display); color: var(--dim); letter-spacing: .05em; min-width: 30px; text-align: center; text-shadow: 0 0 4px #000; }
+  #camCtl .cc-shoot { width: 60px; height: 60px; border-radius: 50%; border: 3px solid #fff; background: rgba(0,0,0,.35); padding: 0; display: grid; place-items: center; }
+  #camCtl .cc-shoot span { width: 46px; height: 46px; border-radius: 50%; background: #ff5a4a; transition: all .15s; }
+  #camCtl .cc-shoot.busy span { width: 24px; height: 24px; border-radius: 5px; }
+  #camPick { position: fixed; z-index: 6; left: 50%; bottom: calc(var(--sb) + 256px); transform: translateX(-50%); width: min(340px, calc(100vw - 24px)); max-height: 46vh; display: flex; flex-direction: column; background: rgba(8,16,22,.94); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+  #camPick .cp-head { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px 8px 14px; font: 700 14px var(--display); letter-spacing: .05em; text-transform: uppercase; border-bottom: 1px solid var(--line); }
+  #camPick .cp-x { background: none; border: 0; color: var(--text); font-size: 18px; min-width: 40px; min-height: 36px; }
+  #camPick .cp-list { overflow-y: auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 8px; }
+  #camPick .cp-list button { min-height: 40px; border-radius: 9px; background: rgba(255,255,255,.07); border: 1px solid transparent; color: var(--text); font: 600 14px var(--body); }
+  #camPick .cp-list button[aria-pressed="true"] { border-color: var(--go); color: var(--go); }
+  #camPick .cp-form { padding: 8px 12px 12px; display: grid; gap: 10px; overflow-y: auto; }
+  #camPick .cp-form label { display: grid; gap: 4px; font: 500 13px var(--body); color: var(--dim); }
+  #camPick .cp-form input { min-height: 40px; border-radius: 9px; border: 1px solid var(--line); background: rgba(255,255,255,.07); color: var(--text); font: 600 16px var(--body); padding: 0 10px; }
+  #camPick .cp-form .seg { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+  #camPick .cp-form .seg button { min-height: 38px; border-radius: 9px; background: rgba(255,255,255,.07); border: 1px solid transparent; color: var(--text); font: 600 14px var(--body); }
+  #camPick .cp-form .seg button[aria-pressed="true"] { border-color: var(--go); color: var(--go); }
+  body.sheet-open #camCtl, body.sheet-open #camPick { visibility: hidden; }
   #arBtn { position: fixed; top: calc(var(--st) + 8px); right: calc(var(--sr) + 10px); width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; background: var(--panel); border: 1px solid var(--line); color: var(--text); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); z-index: 5; padding: 0; }
   #arBtn svg { width: 28px; height: 28px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linejoin: round; }
   #arBtn .needle-n { fill: #ff5a4a; stroke: none; } #arBtn .needle-s { fill: currentColor; stroke: none; opacity: .75; }
@@ -39,6 +63,14 @@
   body.ar-on #stage { background: transparent; }
 
   #top { position: fixed; left: 0; right: 0; top: 0; padding: calc(var(--st) + 10px) calc(var(--sr) + 12px) 0 calc(var(--sl) + 12px); display: flex; flex-direction: column; gap: 5px; align-items: stretch; pointer-events: none; }
+  /* place and sky pills: a drawer that tucks up under the top edge; the tab brings it back */
+  #drawer { display: flex; flex-direction: column; gap: 5px; align-items: flex-start; overflow: hidden; max-height: 70vh; transition: max-height .35s ease, opacity .25s ease, transform .35s ease; }
+  #drawer.shut { max-height: 0; opacity: 0; transform: translateY(-12px); }
+  #drawerTab { pointer-events: auto; align-self: center; width: 64px; height: 26px; margin-top: -3px; padding: 0; border-radius: 0 0 13px 13px; background: var(--panel); border: 1px solid var(--line); border-top: 0; display: grid; place-items: center; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); position: relative; }
+  #drawerTab::before { content: ""; position: absolute; inset: -10px -8px; }
+  #drawerTab span { width: 30px; height: 4px; border-radius: 2px; background: var(--dim); }
+  #drawer:not(.shut) + #drawerTab { opacity: .7; }
+  @media (prefers-reduced-motion: reduce) { #drawer { transition: none; } }
   #lines { border-radius: 14px; padding: 5px 10px; font: 500 12px/1.3 var(--body); letter-spacing: 0; align-self: flex-start; max-width: 100%; }
   #lines .ln { padding: 1px 0; }
   #lines .ln b { font: 700 12px var(--display); letter-spacing: 0.05em; text-transform: uppercase; margin-right: 7px; }
@@ -104,6 +136,7 @@
   .two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 4px 0; }
   .three { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 4px 0; }
   .three .btn { font-size: 14px; padding: 6px 4px; line-height: 1.15; }
+  .three.four { grid-template-columns: repeat(4, 1fr); }
   .zrow { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
   .prompt { background: rgba(232, 198, 106, 0.16); border: 1px solid rgba(232, 198, 106, 0.5); border-radius: 12px; padding: 8px 12px; margin: 6px 0; font-weight: 500; }
   .cur { padding: 6px 2px; } .cur small, .est { color: var(--dim); font-size: 12px; }
@@ -135,18 +168,27 @@
     #ruler { right: calc(var(--sr) + 86px); bottom: calc(var(--sb) + 8px); }
     #top { padding-right: calc(var(--sr) + 86px); }
     #lines { max-width: min(520px, 100%); }
+    #camCtl { left: calc(var(--sl) + 8px); right: auto; top: calc(var(--st) + 134px); bottom: auto; display: grid; grid-template-columns: repeat(2, 66px); gap: 5px; }
+    #camCtl .cc-v { min-height: 34px; min-width: 0; }
+    #camCtl .cc-mode { order: -2; } #camCtl .cc-bat { order: -1; }
+    #camCtl .cc-shoot { position: fixed; right: calc(var(--sr) + 96px); top: 50%; margin-top: -48px; width: 64px; height: 64px; }
+    #camPick { left: calc(var(--sl) + 152px); bottom: auto; top: calc(var(--st) + 56px); transform: none; max-height: calc(100vh - var(--st) - 72px); }
     .sheet { left: auto; right: calc(var(--sr) + 8px); top: calc(var(--st) + 8px); bottom: calc(var(--sb) + 8px); width: min(380px, 52vw); height: auto; }
   }
 </style>
 </head>
 <body>
-<div id="stage"><video id="arVideo" playsinline muted hidden></video><canvas id="cv"></canvas></div>
+<div id="stage"><video id="arVideo" playsinline muted hidden></video><canvas id="arFrame" hidden></canvas><canvas id="cv"></canvas></div>
 <button id="arBtn" aria-pressed="false" aria-label="Augmented reality: line the view up with the phone camera"><svg viewBox="0 0 28 28"><circle cx="14" cy="14" r="11.5"/><path class="needle-n" d="M14 4.5l3 9.5h-6z"/><path class="needle-s" d="M14 23.5l-3-9.5h6z"/></svg></button>
 
 <div id="top">
-  <div id="status" class="chip"><b id="statName">Moonshot</b><span id="statTime"></span></div>
-  <div id="lines" class="chip" hidden></div>
+  <div id="drawer">
+    <div id="status" class="chip"><b id="statName">Moonshot</b><span id="statTime"></span></div>
+    <div id="lines" class="chip" hidden></div>
+  </div>
+  <button id="drawerTab" aria-expanded="true" aria-controls="drawer" aria-label="Show place and sky details"><span></span></button>
   <div id="arMsg" class="chip" role="status" hidden></div>
+  <button id="arCompass" class="chip" hidden>Use compass</button>
 </div>
 
 <div id="ruler"></div>
@@ -160,6 +202,6 @@
   <button class="tog" id="more" data-k="menu" aria-pressed="false" aria-label="Menu"><svg viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>Menu</button>
 </nav>
 
-<script type="module" src="js/main.js?v=1116.1400-424dc31"></script>
+<script type="module" src="js/main.js?v=1117.2337-166b81d"></script>
 </body>
 </html>

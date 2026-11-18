@@ -1,19 +1,21 @@
 // main.js -- state, wiring, readouts, URL state, startup. The menu (menu.js) gets the functions it needs through initMenu().
-import { observer, sunMoon, altAz, path, Body, milkyWay, milkyWayAt, nightSky, enu } from './astro.js?v=1116.1400-424dc31';
-import { loadSkyArt } from './skyart.js?v=1116.1400-424dc31';
-import * as TZ from './tz.js?v=1116.1400-424dc31';
-import { Ruler } from './ruler.js?v=1116.1400-424dc31';
-import { makeHorizon, terrainEvents, hidden } from './horizon.js?v=1116.1400-424dc31';
-import { DEMO, demoTerrain } from './demo.js?v=1116.1400-424dc31';
-import { draw } from './draw.js?v=1116.1400-424dc31';
-import { clampView, attachGestures } from './view.js?v=1116.1400-424dc31';
-import { SENSORS } from './optics.js?v=1116.1400-424dc31';
-import { listPlaces, openPlace, getLastPlaceId, setLastPlaceId, loadPeaks } from './places.js?v=1116.1400-424dc31';
-import { visiblePeaks } from './peaks.js?v=1116.1400-424dc31';
-import { initMenu } from './menu.js?v=1116.1400-424dc31';
-import { tick } from './haptic.js?v=1116.1400-424dc31';
-import { AR } from './ar.js?v=1116.1400-424dc31';
-import { whereAmI } from './places.js?v=1116.1400-424dc31';
+import { observer, sunMoon, altAz, path, Body, milkyWay, milkyWayAt, nightSky, enu } from './astro.js?v=1117.2337-166b81d';
+import { loadSkyArt } from './skyart.js?v=1117.2337-166b81d';
+import * as TZ from './tz.js?v=1117.2337-166b81d';
+import { Ruler } from './ruler.js?v=1117.2337-166b81d';
+import { makeHorizon, terrainEvents, hidden } from './horizon.js?v=1117.2337-166b81d';
+import { DEMO, demoTerrain } from './demo.js?v=1117.2337-166b81d';
+import { draw } from './draw.js?v=1117.2337-166b81d';
+import { clampView, attachGestures } from './view.js?v=1117.2337-166b81d';
+import { SENSORS } from './optics.js?v=1117.2337-166b81d';
+import { listPlaces, openPlace, getLastPlaceId, setLastPlaceId, loadPeaks } from './places.js?v=1117.2337-166b81d';
+import { visiblePeaks } from './peaks.js?v=1117.2337-166b81d';
+import { initMenu } from './menu.js?v=1117.2337-166b81d';
+import { tick } from './haptic.js?v=1117.2337-166b81d';
+import { AR } from './ar.js?v=1117.2337-166b81d';
+import { openCameraLink } from './cameralink.js?v=1117.2337-166b81d';
+import { initCamCtl } from './camctl.js?v=1117.2337-166b81d';
+import { whereAmI } from './places.js?v=1117.2337-166b81d';
 
 const R2D = 180 / Math.PI;
 
@@ -42,7 +44,8 @@ export function requestDraw() {
   });
 }
 
-const dayStartOf = d => TZ.dayStart(d);   // start of the local day in the chosen zone
+const dayStartOf = d => TZ.dayStart(d);
+const nowMinute = () => new Date(Math.round(Date.now() / 60000) * 60000);   // start of the local day in the chosen zone
 
 function updateStatus() {
   if (!S.place) return;
@@ -50,6 +53,20 @@ function updateStatus() {
   $('statTime').textContent = TZ.formatFull(S.date);
   updateLines();
 }
+
+// ---- the drawer holding the place and sky pills: shown for a moment, then tucked away ----
+const DRAWER_FIRST_MS = 4000, DRAWER_TAP_MS = 10000;
+let drawerTimer = 0;
+function showDrawer(ms) {
+  $('drawer').classList.remove('shut'); $('drawerTab').setAttribute('aria-expanded', true);
+  clearTimeout(drawerTimer); drawerTimer = setTimeout(hideDrawer, ms);
+}
+function hideDrawer() {
+  clearTimeout(drawerTimer);
+  $('drawer').classList.add('shut'); $('drawerTab').setAttribute('aria-expanded', false);
+}
+$('drawerTab').addEventListener('click', () => ($('drawer').classList.contains('shut') ? showDrawer(DRAWER_TAP_MS) : hideDrawer()));
+$('drawer').addEventListener('transitionend', e => { if (e.propertyName === 'max-height') resize(); });
 
 // ---- readouts: one line per object that is switched on ----
 const deg1 = r => `${(((r * R2D) % 360 + 360) % 360).toFixed(1)}\u00b0`;
@@ -176,6 +193,7 @@ export function setPlace({ name, lat, lon, terrain, eyeM = 1.7, maxDist = 60000,
   ruler?.invalidate();
   setTime(S.date);
   changed();
+  showDrawer(DRAWER_FIRST_MS);
 }
 
 /**
@@ -277,34 +295,58 @@ for (const b of document.querySelectorAll('#bar .tog:not(#more)')) {
 
 attachGestures($('stage'), S.view, { onChange: requestDraw, onDoubleTap: () => { if (!S.ar) lookAtMoon(); }, zoom: zoomLens });
 
-// ---- AR: phone camera + compass, ridges pulled onto the real skyline (ar.js) ----
-const arMsg = $('arMsg'), arBtn = $('arBtn');
+// ---- AR: phone camera (or a USB camera) + compass, ridges pulled onto the real skyline (ar.js) ----
+const arMsg = $('arMsg'), arBtn = $('arBtn'), arCompass = $('arCompass');
 const arSay = (text, kind = '') => { arMsg.textContent = text || ''; arMsg.className = `chip ${kind}`; arMsg.hidden = !text; };
 const ar = new AR($('arVideo'), S, {
-  draw: () => { if (S.horizon && S.sm) draw(ctx, S, canvas.width, canvas.height, window.devicePixelRatio || 1); },
-  status: arSay,
-});
-let arPrev = null;
-export async function setAR(on) {
-  if (on === ar.on) return;
-  if (!on) {
-    ar.stop(); arBtn.setAttribute('aria-pressed', false); arSay('');
-    if (arPrev) setView({ altDeg: Math.max(-5, Math.min(30, S.view.altDeg)), hfovDeg: arPrev.hfovDeg });
-    return;
+  draw: () => {
+    if (S.horizon && S.sm) draw(ctx, S, canvas.width, canvas.height, window.devicePixelRatio || 1);
+    arCompass.hidden = !(ar.on && ar.sensorsOff);
+  },
+  status: (t, k) => { if (!camLink?.drive) arSay(t, k); },     // a running drive owns the message line
+}, $('arFrame'));
+let arPrev = null, camLink = null, camCtl = null;
+const fnFromMenu = () => S.camera.exact / (SENSORS.find(s => s.id === S.camera.sensor) || SENSORS[0]).w;   // focal / sensor width
+/** AR on or off. source: 'phone' or 'camera' (the USB camera, when one is attached). */
+export async function setAR(on, source = 'phone') {
+  const want = on ? source : null, have = ar.on ? (ar.ext ? 'camera' : 'phone') : null;
+  if (want === have) return;
+  if (ar.on) {
+    ar.stop(); arBtn.setAttribute('aria-pressed', false); arSay(''); camCtl?.show(false); camLink?.setLive(false);
+    if (arPrev && !want) setView({ altDeg: Math.max(-5, Math.min(30, S.view.altDeg)), hfovDeg: arPrev.hfovDeg });
   }
-  if (!S.place?.id) { menu.open('place', 'AR needs a downloaded location: use Current location.'); return; }
+  if (!want) return;
+  if (!S.place?.id) { menu.open('place', want === 'camera' ? 'The camera view needs a downloaded location: use Current location.' : 'AR needs a downloaded location: use Current location.'); return; }
   arPrev = { ...S.view };
   arBtn.setAttribute('aria-pressed', true);
   try {
-    await ar.start();
-    setTime(new Date());
+    if (want === 'camera') { await camLink.setLive(true); await ar.start({ link: camLink, fnGuess: fnFromMenu() }); camCtl.show(true); }
+    else await ar.start();
+    setTime(nowMinute());
     whereAmI().then(p => {                         // the overlay is drawn from the chosen location, not from where the phone is
       const km = metersApart(p, S.place) / 1000;
       if (ar.on && km > 0.3) arSay(`You are ${km < 10 ? km.toFixed(1) : Math.round(km)} km from ${S.place.name}; the ridges are drawn from there. Download Current location to match.`, 'bad');
     }).catch(() => {});
-  } catch (e) { ar.stop(); arBtn.setAttribute('aria-pressed', false); arSay(''); menu.note(e.message); menu.open('place'); }
+  } catch (e) { ar.stop(); arBtn.setAttribute('aria-pressed', false); arSay(''); camCtl?.show(false); menu.note(e.message); menu.open('place'); }
 }
-arBtn.addEventListener('click', () => setAR(!ar.on));
+// the compass button: the USB camera's view when one is attached, else the phone camera
+arBtn.addEventListener('click', () => setAR(!ar.on, camLink?.state.attached && camLink.state.supported ? 'camera' : 'phone'));
+arCompass.addEventListener('click', () => ar.enableSensors().catch(e => arSay(e.message, 'bad')));
+
+// A camera on the USB port (native app): switch to its view when it is plugged in, back when it is unplugged.
+openCameraLink().then(async link => {
+  if (!link) return;
+  camLink = link;
+  camCtl = initCamCtl(link, { say: arSay, haptic: tick });
+  link.on('status', d => { if (d.text && (!ar.on || d.kind === 'bad')) arSay(d.text, d.kind || ''); });
+  link.on('attached', d => {
+    if (!d.supported) return;
+    if (/ILCE-6|ZV-E10|NEX|ILCE-6\d00|a6\d00/i.test(d.name || '') && S.camera.sensor === 'ff') setCamera({ sensor: 'apsc' });
+    setAR(true, 'camera');
+  });
+  link.on('detached', () => { if (ar.ext) { setAR(false); arSay('Camera unplugged.'); setTimeout(() => arSay(''), 3000); } });
+  await link.start();
+}).catch(e => console.error('camera link', e));
 
 // ---- link state: #lat=..&lon=..&t=..&az=..&alt=..&fov=..&cam=ff,600,l (written at most once a second) ----
 let hashTimer = 0, lastHash = -1e9, started = false;
@@ -363,7 +405,7 @@ async function start() {
     if (!isDemo) menu.open('place', 'Choose a location to see its real horizon.');
   }
   const tv = hash.t || q.get('t'), td = tv ? new Date(tv) : null;
-  setTime(td && !Number.isNaN(td.getTime()) ? td : isDemo ? new Date('2026-11-25T00:30:00Z') : new Date());
+  setTime(td && !Number.isNaN(td.getTime()) ? td : isDemo ? new Date('2026-11-25T00:30:00Z') : nowMinute());
   if (isDemo && numOr(hash.az) == null && num('az') == null) lookAtMoon(); else setView({ azDeg: 180, altDeg: 15 });
   const cam = (hash.cam || '').split(',');
   if (cam.length === 3 && SENSORS.some(s => s.id === cam[0])) setCamera({ on: true, sensor: cam[0], focal: +cam[1] || 50, portrait: cam[2] === 'p' });
@@ -376,7 +418,7 @@ async function start() {
 start();
 
 loadSkyArt(requestDraw);
-window.moonshot = { S, setAR, setTime, setView, setPlace, usePlace, applyPlan, useDemo, requestDraw, setTz, setCamera, ruler, rulerMarks, hashString, menu };
+window.moonshot = { S, setAR, get camLink() { return camLink; }, ar: () => ar, setTime, setView, setPlace, usePlace, applyPlan, useDemo, requestDraw, setTz, setCamera, ruler, rulerMarks, hashString, menu };
 
 // ---- offline shell: not in the native app (Capacitor serves the files itself) ----
 if ('serviceWorker' in navigator && !window.Capacitor) {

@@ -3,15 +3,17 @@
 // pickSpot() resolves to {lat, lon, name} or null (canceled). In solver mode with a
 // subject and a valid alignment it is {lat, lon, name, plan: {time, azDeg, altDeg, body, kind, subject}}.
 // A native picker can replace Leaflet: if the Capacitor 'SpotPicker' plugin exists it is used
-// (not in solver mode).
+// (in spot mode only). Shadows mode (shadowmap.js) shades the terrain shadows of the sun or the
+// moon at a time on its own time ruler; opts.onTime(date) gets that time on close if it was moved.
 
-import { whereAmI } from './places.js?v=1116.1400-424dc31';
-import * as astro from './astro.js?v=1116.1400-424dc31';
-import * as TZ from './tz.js?v=1116.1400-424dc31';
-import { tick } from './haptic.js?v=1116.1400-424dc31';
-import { makeSkyGlyph } from './skyglyph.js?v=1116.1400-424dc31';
-import { fetchElevGrid } from './elev.js?v=1116.1400-424dc31';
-import { bodyTrack, solveGrid, solveSpot, elevAt, lonLatToPx, pxToLonLat } from './solver.js?v=1116.1400-424dc31';
+import { whereAmI } from './places.js?v=1117.2337-166b81d';
+import * as astro from './astro.js?v=1117.2337-166b81d';
+import * as TZ from './tz.js?v=1117.2337-166b81d';
+import { tick } from './haptic.js?v=1117.2337-166b81d';
+import { makeSkyGlyph } from './skyglyph.js?v=1117.2337-166b81d';
+import { fetchElevGrid } from './elev.js?v=1117.2337-166b81d';
+import { attachShadows } from './shadowmap.js?v=1117.2337-166b81d';
+import { bodyTrack, solveGrid, solveSpot, elevAt, lonLatToPx, pxToLonLat } from './solver.js?v=1117.2337-166b81d';
 
 const LINE_KM = 20;
 let leafletReady = null;
@@ -61,12 +63,18 @@ const CSS = `
 .mp-day{flex:1;min-width:80px;height:40px;accent-color:#e8c66a}
 .mp-dl{min-width:96px;font-size:12px;line-height:1.2;text-align:right;color:#e6eef2}
 .mp-sq{min-width:40px;padding:0}
+.mp-loc{padding:0;display:grid;place-items:center}.mp-loc svg{width:22px;height:22px;fill:#3fb6ff;stroke:#3fb6ff;stroke-width:1.5;stroke-linejoin:round}
 .mp-tri{width:0;height:0;border-left:11px solid transparent;border-right:11px solid transparent;border-bottom:22px solid #e5483a;filter:drop-shadow(0 0 2px #fff)}
 .mp-shade{image-rendering:auto}
 .mp-root .leaflet-control-layers-toggle{background-image:none!important;width:44px;height:44px;display:grid;place-items:center;color:#14273a;font:600 13px/1 Barlow,system-ui,sans-serif;text-decoration:none}
 .mp-root .leaflet-control-layers-toggle::after{content:'Map'}
 .mp-root .leaflet-control-layers-expanded{padding:8px 12px;font:15px/2.2 Barlow,system-ui,sans-serif;color:#14273a}
 .mp-lbl{background:rgba(12,26,34,.85);border:1px solid #33505f;color:#e6eef2}
+@media (orientation:landscape) and (max-height:520px){
+.mp-root{display:grid;grid-template-columns:1fr min(400px,48vw);grid-template-rows:auto auto 1fr;grid-template-areas:"map bar" "map modes" "map foot"}
+.mp-bar{grid-area:bar;border-left:1px solid #26404f}.mp-modes{grid-area:modes}.mp-map{grid-area:map;height:100%}
+.mp-foot{grid-area:foot;overflow-y:auto;border-top:0;border-left:1px solid #26404f}
+.mp-bar,.mp-modes,.mp-foot{padding-left:10px}.mp-msg:empty{display:none}}
 `;
 
 function addStyles() {
@@ -90,11 +98,12 @@ async function pickNative(opts) {
 
 /**
  * opts: {lat, lon, zoom} to start from; lines: [{azDeg, color, label}] drawn
- * from the marker as 20 km azimuth lines; mode: 'spot' (default) | 'solver'; date: Date for the solver's day slider.
+ * from the marker as 20 km azimuth lines; mode: 'spot' (default) | 'solver' | 'shadow'; date: Date for the solver's
+ * day slider and the shadow ruler; onTime(date): the shadow ruler's time, on close, if it was moved.
  * Resolves to {lat, lon, name[, plan]} or null.
  */
 export async function pickSpot(opts = {}) {
-  if (opts.mode !== 'solver' && window.Capacitor?.PluginHeaders?.some(h => h.name === 'SpotPicker')) return pickNative(opts);
+  if ((opts.mode || 'spot') === 'spot' && window.Capacitor?.PluginHeaders?.some(h => h.name === 'SpotPicker')) return pickNative(opts);
 
   addStyles();
   const root = el('div', 'mp-root');
@@ -105,8 +114,10 @@ export async function pickSpot(opts = {}) {
   bar.append(input, find);
   const mapEl = el('div', 'mp-map');
   const foot = el('div', 'mp-foot'), msg = el('div', 'mp-msg', 'Loading the map…'), pos = el('div', 'mp-pos', 'Tap the map to place the spot.');
-  const here = el('button', 'mp-btn', 'Where I am'), cancel = el('button', 'mp-btn', 'Cancel'), use = el('button', 'mp-btn mp-go', 'Use this spot');
+  const here = el('button', 'mp-btn mp-loc', ''), cancel = el('button', 'mp-btn', 'Cancel'), use = el('button', 'mp-btn mp-go', 'Use this spot');
   use.disabled = true;
+  here.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 3L3 10.5l7.5 3 3 7.5z"/></svg>';
+  here.setAttribute('aria-label', 'Current location'); here.title = 'Current location';
   const row1 = el('div', 'mp-row'), row2 = el('div', 'mp-row');
   row1.style.marginBottom = '8px';
   row2.append(cancel, here, el('div'), use);
@@ -120,8 +131,9 @@ export async function pickSpot(opts = {}) {
     return mark;
   };
   const panel = el('div', 'mp-panel'), pr1 = el('div', 'mp-row'), pr2 = el('div', 'mp-row'), pr3 = el('div', 'mp-row');
-  const modes = el('div', 'mp-modes'), modeSpot = chip('Spot', true), modeSolver = chip('Solver', false);
-  modes.append(modeSpot, modeSolver);
+  const modes = el('div', 'mp-modes'), modeSpot = chip('Spot', true), modeSolver = chip('Solver', false), modeShadow = chip('Shadows', false);
+  modes.append(modeSpot, modeSolver, modeShadow);
+  const shPanel = el('div', 'mp-panel');
   const hInput = el('input', 'mp-num');
   hInput.type = 'number'; hInput.min = '0'; hInput.max = '1000'; hInput.step = '1'; hInput.value = '0'; hInput.inputMode = 'numeric';
   hInput.setAttribute('aria-label', 'Subject height above ground (m)'); hInput.title = 'Subject height above ground (m)';
@@ -132,7 +144,7 @@ export async function pickSpot(opts = {}) {
   dl.style.cssText = 'display:flex;align-items:center;justify-content:flex-end;gap:4px'; dl.append(gl.el, dt);
   pr3.append(prev, day, next, dl);
   panel.append(pr1, pr2, pr3);
-  foot.append(msg, panel, pos, row2);
+  foot.append(msg, panel, shPanel, pos, row2);
   root.append(bar, modes, mapEl, foot);
   document.body.appendChild(root);
 
@@ -167,7 +179,7 @@ export async function pickSpot(opts = {}) {
   const linesGroup = L.layerGroup().addTo(map);
   const drawLines = () => {
     linesGroup.clearLayers();
-    if (!marker || S.mode === 'solver') return;   // the lines are for the app's current time, not the solver's day
+    if (!marker || S.mode !== 'spot') return;   // the lines are for the app's current time, not the solver's day or the shadow time
     const { lat, lng } = marker.getLatLng();
     for (const ln of opts.lines || []) {
       const a = ln.azDeg * Math.PI / 180;
@@ -218,7 +230,7 @@ export async function pickSpot(opts = {}) {
 
 
   // ---- solver ----------------------------------------------------------------
-  const S = { mode: opts.mode === 'solver' ? 'solver' : 'spot', body: 'moon', kind: 'rise', tap: 'subject', dayIdx: 0, subject: null, grid: null, near: null, runs: [], res: null, spot: null };
+  const S = { mode: ['solver', 'shadow'].includes(opts.mode) ? opts.mode : 'spot', body: 'moon', kind: 'rise', tap: 'subject', dayIdx: 0, subject: null, grid: null, near: null, runs: [], res: null, spot: null };
   const baseDay = TZ.dayStart(opts.date instanceof Date ? opts.date : new Date());
   const dayAt = i => TZ.dayStart(new Date(+baseDay + i * DAY_MS + 12 * 3600000));
   let subjMarker = null, spotLine = null, overlay = null, token = 0, fetchTimer = 0, fetchCtl = null, wantedArea = 0;
@@ -231,7 +243,8 @@ export async function pickSpot(opts = {}) {
   const markTap = group(pr2, [['subject', 'Subject'], ['spot', 'Spot']], () => S.tap, k => { S.tap = k; });
   const hLbl = el('span', 'mp-small', 'Height m'); hLbl.title = 'Subject height above ground (m)';
   pr2.append(el('div', 'mp-sep'), hLbl, hInput);
-  const markMode = () => { modeSpot.setAttribute('aria-pressed', String(!solverOn())); modeSolver.setAttribute('aria-pressed', String(solverOn())); };
+  const markMode = () => [[modeSpot, 'spot'], [modeSolver, 'solver'], [modeShadow, 'shadow']].forEach(([b, k]) => b.setAttribute('aria-pressed', String(S.mode === k)));
+  const shadows = attachShadows(L, map, { panel: shPanel, say, date: opts.date, chip });
 
   const heightM = () => Math.max(0, +hInput.value || 0);
   const subjIcon = L.divIcon({ className: '', html: '<div class="mp-tri"></div>', iconSize: [22, 22], iconAnchor: [11, 20] });
@@ -370,6 +383,8 @@ export async function pickSpot(opts = {}) {
 
   const applyMode = () => {
     markMode();
+    shadows.show(S.mode === 'shadow');
+    drawLines();
     panel.style.display = solverOn() ? '' : 'none';
     for (const l of [subjMarker, overlay]) if (l) (solverOn() ? l.addTo(map) : l.remove());
     if (solverOn()) { dayLabel(); refetch(0); recompute(); } else { token++; if (spotLine) { spotLine.remove(); spotLine = null; } S.spot = null; refreshInfo(); }
@@ -377,6 +392,7 @@ export async function pickSpot(opts = {}) {
     setTimeout(() => map.invalidateSize(), 0);
   };
   modeSpot.onclick = () => { S.mode = 'spot'; applyMode(); };
+  modeShadow.onclick = () => { S.mode = 'shadow'; applyMode(); };
   modeSolver.onclick = () => { S.mode = 'solver'; if (S.subject) S.tap = 'spot'; markTap(); applyMode(); };
 
   hInput.onchange = () => {
@@ -411,7 +427,7 @@ export async function pickSpot(opts = {}) {
   input.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); search(); } };
 
   here.onclick = async () => {
-    here.disabled = true; say('Finding where you are…', true);
+    here.disabled = true; say('Finding your current location…', true);
     try {
       const p = await whereAmI();
       place(p.lat, p.lon, null);
@@ -421,7 +437,10 @@ export async function pickSpot(opts = {}) {
   };
 
   return new Promise(resolve => {
-    const done = v => { map.remove(); root.remove(); resolve(v); };
+    const done = v => {
+      if (shadows.changed) opts.onTime?.(shadows.time);
+      shadows.destroy(); map.remove(); root.remove(); resolve(v);
+    };
     cancel.onclick = () => done(null);
     use.onclick = () => {
       if (!marker) return;

@@ -6,7 +6,7 @@
 // a jump and the selected span returns on release. The haptic tick is opts.haptic.
 // Only import: skyglyph.js (moon + Milky Way glyph in the readout). See PLAN.md section 8.
 
-import { makeSkyGlyph, drawPhase } from './skyglyph.js?v=1116.1400-424dc31';
+import { makeSkyGlyph, drawPhase } from './skyglyph.js?v=1117.2337-166b81d';
 
 export const SPANS = [2 * 3600e3, 12 * 3600e3, 3 * 86400e3, 30 * 86400e3];
 const SPAN_LABELS = ['2h', '12h', '3d', '30d'];
@@ -293,6 +293,9 @@ export class Ruler {
     this._bands = null; this._marks = null;
     this._schedule();
   }
+
+  /** Stop observing and drawing (the container can then be removed). */
+  destroy() { this._ro?.disconnect(); this._stopFling(); this._clearLP(); if (this._raf) cancelAnimationFrame(this._raf); this._raf = 0; }
 
   invalidate() { this._bands = null; this._marks = null; this._skyDay = null; this._syncDate(); this._schedule(); }
 
