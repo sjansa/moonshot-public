@@ -6,7 +6,7 @@
 // a jump and the selected span returns on release. The haptic tick is opts.haptic.
 // Only import: skyglyph.js (moon + Milky Way glyph in the readout). See PLAN.md section 8.
 
-import { makeSkyGlyph, drawPhase } from './skyglyph.js?v=1118.1811-86b42d8';
+import { makeSkyGlyph, drawPhase } from './skyglyph.js?v=1119.0437-fbafc20';
 
 export const SPANS = [2 * 3600e3, 12 * 3600e3, 3 * 86400e3, 30 * 86400e3];
 const SPAN_LABELS = ['2h', '12h', '3d', '30d'];

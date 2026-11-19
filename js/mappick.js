@@ -6,14 +6,14 @@
 // (in spot mode only). Shadows mode (shadowmap.js) shades the terrain shadows of the sun or the
 // moon at a time on its own time ruler; opts.onTime(date) gets that time on close if it was moved.
 
-import { whereAmI } from './places.js?v=1118.1811-86b42d8';
-import * as astro from './astro.js?v=1118.1811-86b42d8';
-import * as TZ from './tz.js?v=1118.1811-86b42d8';
-import { tick } from './haptic.js?v=1118.1811-86b42d8';
-import { makeSkyGlyph } from './skyglyph.js?v=1118.1811-86b42d8';
-import { fetchElevGrid } from './elev.js?v=1118.1811-86b42d8';
-import { attachShadows } from './shadowmap.js?v=1118.1811-86b42d8';
-import { bodyTrack, solveGrid, solveSpot, elevAt, lonLatToPx, pxToLonLat } from './solver.js?v=1118.1811-86b42d8';
+import { whereAmI } from './places.js?v=1119.0437-fbafc20';
+import * as astro from './astro.js?v=1119.0437-fbafc20';
+import * as TZ from './tz.js?v=1119.0437-fbafc20';
+import { tick } from './haptic.js?v=1119.0437-fbafc20';
+import { makeSkyGlyph } from './skyglyph.js?v=1119.0437-fbafc20';
+import { fetchElevGrid } from './elev.js?v=1119.0437-fbafc20';
+import { attachShadows } from './shadowmap.js?v=1119.0437-fbafc20';
+import { bodyTrack, solveGrid, solveSpot, elevAt, lonLatToPx, pxToLonLat } from './solver.js?v=1119.0437-fbafc20';
 
 const LINE_KM = 20;
 let leafletReady = null;
@@ -82,6 +82,7 @@ const CSS = `
 .mp-dl{min-width:96px;font-size:12px;line-height:1.2;text-align:right;color:var(--txt)}
 .mp-sq{min-width:40px;padding:0}
 .mp-loc{padding:0;display:grid;place-items:center}.mp-loc svg{width:22px;height:22px;fill:var(--blue);stroke:var(--blue);stroke-width:1.5;stroke-linejoin:round}
+.mp-trihit{width:44px;height:44px;display:flex;align-items:flex-end;justify-content:center;padding-bottom:2px;box-sizing:border-box}
 .mp-tri{width:0;height:0;border-left:11px solid transparent;border-right:11px solid transparent;border-bottom:22px solid #e5483a;filter:drop-shadow(0 0 2px #fff)}
 .mp-shade{image-rendering:auto;transition:opacity .45s ease}
 .leaflet-zoom-anim .mp-shade{transition:transform .25s cubic-bezier(0,0,.25,1),opacity .45s ease}
@@ -308,7 +309,7 @@ export async function pickSpot(opts = {}) {
   shadows = attachShadows(L, map, { panel: shPanel, say, date: opts.date, chip, fold });
 
   const heightM = () => Math.max(0, +hInput.value || 0);
-  const subjIcon = L.divIcon({ className: '', html: '<div class="mp-tri"></div>', iconSize: [22, 22], iconAnchor: [11, 20] });
+  const subjIcon = L.divIcon({ className: '', html: '<div class="mp-trihit"><div class="mp-tri"></div></div>', iconSize: [44, 44], iconAnchor: [22, 42] });   // a fingertip to drag
 
   const dayLabel = () => {
     const d = dayAt(S.dayIdx);
@@ -416,13 +417,16 @@ export async function pickSpot(opts = {}) {
   };
   map.on('moveend', () => refetch());
 
-  const setSubject = async (lat, lon, sname = null) => {
+  // snap: how far (screen pixels) a tap may land from the top it means; a drag means the very spot
+  const SNAP_TAP_PX = 22, SNAP_DRAG_PX = 4;
+  const setSubject = async (lat, lon, sname = null, snapPx = SNAP_TAP_PX) => {
     say('Loading terrain…', true);
     try {
-      let g = S.grid && Number.isFinite(elevAt(S.grid, lon, lat)) ? S.grid : null;
-      if (!g) g = await fetchElevGrid([lon - 0.02, lat - 0.02, lon + 0.02, lat + 0.02]);
-      // snap to the highest cell within 250 m
-      const c = lonLatToPx(lon, lat, g.z), mpp = 156543.03 * Math.cos(lat * Math.PI / 180) / 2 ** g.z, r = 250 / mpp;
+      // the highest point within a fingertip of the tap (at most 250 m when zoomed out), on the finest terrain
+      const screenM = 156543.03 * Math.cos(lat * Math.PI / 180) / 2 ** map.getZoom();
+      const snapM = Math.max(3, Math.min(250, snapPx * screenM)), dLat = (snapM + 60) / 110540, dLon = dLat / Math.cos(lat * Math.PI / 180);
+      const g = await fetchElevGrid([lon - dLon, lat - dLat, lon + dLon, lat + dLat], { maxZoom: 15, maxTiles: 4 });
+      const c = lonLatToPx(lon, lat, g.z), mpp = 156543.03 * Math.cos(lat * Math.PI / 180) / 2 ** g.z, r = Math.max(0.5, snapM / mpp);
       let bx = c.x, by = c.y, bz = -Infinity;
       for (let y = Math.floor(c.y - r); y <= c.y + r; y++) for (let x = Math.floor(c.x - r); x <= c.x + r; x++) {
         const i = x - g.x0, j = y - g.y0;
@@ -433,10 +437,12 @@ export async function pickSpot(opts = {}) {
       if (!Number.isFinite(bz)) throw new Error('No terrain data at that point.');
       const p = pxToLonLat(bx, by, g.z);
       S.subject = { lat: p.lat, lon: p.lon, ground: bz, elev: bz + heightM(), name: sname };
-      if (!S.grid) S.grid = g;
       if (subjMarker) subjMarker.setLatLng([p.lat, p.lon]);
-      else subjMarker = L.marker([p.lat, p.lon], { icon: subjIcon, interactive: false, keyboard: false }).addTo(map);
-      S.tap = 'spot'; markTap();
+      else {
+        subjMarker = L.marker([p.lat, p.lon], { icon: subjIcon, draggable: true, keyboard: false, autoPan: true }).addTo(map);
+        subjMarker.on('dragend', () => { const q = subjMarker.getLatLng(); setSubject(q.lat, q.lng, null, SNAP_DRAG_PX); });
+      }
+      if (!marker) { S.tap = 'spot'; markTap(); }    // first the subject, then where to stand; after that taps stay on what was chosen
       say(''); dayLabel();
       refetch(0, true); recompute();
     } catch (e) { say(e.message || 'The terrain data could not be loaded.'); }
