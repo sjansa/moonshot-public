@@ -7,8 +7,9 @@
 //
 // Nothing here touches browser globals at import time (tests run it in Node).
 
-import { buildTerrain, estimate, expandBbox, DEM_UNIT } from '../core/build.js?v=1119.0437-fbafc20';
-import { Grid, Terrain } from '../core/terrain.js?v=1119.0437-fbafc20';
+import { buildTerrain, estimate, expandBbox, DEM_UNIT } from '../core/build.js?v=1119.0458-060f738';
+import { Grid, Terrain } from '../core/terrain.js?v=1119.0458-060f738';
+import { fetchNear, in3dep, ATTRIBUTION as NEAR_ATTRIBUTION } from './lidar.js?v=1119.0458-060f738';
 
 export const REACH = { normal: { km: 60, coarseRes: 60 }, far: { km: 120, coarseRes: 120 } };
 export const FINE_KM = 8, FINE_RES = 10;
@@ -37,12 +38,15 @@ export function packMeta(place, built) {
     demUnit: DEM_UNIT,
     fine: side(built.fineGrid, built.fine, 'dem_fine.bin'),
     coarse: side(built.coarseGrid, built.coarse, 'dem_coarse.bin'),
-    attribution: 'Terrain: Mapzen/AWS Terrain Tiles.',
+    ...(built.nearGrid ? { near: { file: 'dem_near.bin', ...gridBox(built.nearGrid) } } : {}),
+    attribution: 'Terrain: Mapzen/AWS Terrain Tiles.' + (built.nearGrid ? ' ' + NEAR_ATTRIBUTION : ''),
   };
 }
+const gridBox = g => ({ west: g.west, south: g.south, east: g.east, north: g.north, cols: g.cols, rows: g.rows });
 
-export function terrainFromPack(meta, fineBuf, coarseBuf) {
-  return new Terrain(new Grid(meta.fine, new Uint16Array(fineBuf), meta.demUnit), new Grid(meta.coarse, new Uint16Array(coarseBuf), meta.demUnit));
+export function terrainFromPack(meta, fineBuf, coarseBuf, nearBuf = null) {
+  const near = meta.near && nearBuf ? new Grid(meta.near, new Uint16Array(nearBuf), meta.demUnit) : null;
+  return new Terrain(new Grid(meta.fine, new Uint16Array(fineBuf), meta.demUnit), new Grid(meta.coarse, new Uint16Array(coarseBuf), meta.demUnit), near);
 }
 
 // --------------------------------------------------------------------- peaks
@@ -154,7 +158,11 @@ export async function createPlace({ name, lat, lon, eyeM = 1.7, reach = 'normal'
   const spec = terrainSpec(lat, lon, reach);
   let built;
   const peaksP = fetchPeaks(lat, lon, reach, signal).catch(() => null);   // a peaks failure never fails the place
-  try { built = await buildTerrain(spec, (f, m) => progress(0.95 * f, m), signal); } catch (e) { throw readable(e); }
+  try { built = await buildTerrain(spec, (f, m) => progress(0.85 * f, m), signal); } catch (e) { throw readable(e); }
+  if (in3dep(lat, lon)) {                  // 1 m terrain close by, where the US has it; the place works without it
+    progress(0.86, 'Downloading 1 m terrain near the spot…');
+    try { built.nearGrid = await fetchNear(lat, lon, built.fineGrid, signal); } catch (e) { if (e?.name === 'AbortError') throw e; }
+  }
   const peaks = await Promise.race([peaksP, new Promise(r => setTimeout(r, 1500, null))]);   // never hold the place up for names; loadPeaks gets them later
   progress(0.96, 'Saving…');
   const id = 'p-' + Date.now().toString(36);
@@ -163,8 +171,10 @@ export async function createPlace({ name, lat, lon, eyeM = 1.7, reach = 'normal'
   const fineBuf = built.fineGrid.data.buffer, coarseBuf = built.coarseGrid.data.buffer;
   const metaBuf = new TextEncoder().encode(JSON.stringify(meta)).buffer;
   place.bytes = fineBuf.byteLength + coarseBuf.byteLength + metaBuf.byteLength;
-  const terrain = terrainFromPack(meta, fineBuf, coarseBuf);
-  let ok = await put(`${id}/dem_fine.bin`, fineBuf) && await put(`${id}/dem_coarse.bin`, coarseBuf) && await put(`${id}/pack.json`, metaBuf);
+  const nearBuf = built.nearGrid ? built.nearGrid.data.buffer : null;
+  if (nearBuf) place.bytes += nearBuf.byteLength;
+  const terrain = terrainFromPack(meta, fineBuf, coarseBuf, nearBuf);
+  let ok = await put(`${id}/dem_fine.bin`, fineBuf) && await put(`${id}/dem_coarse.bin`, coarseBuf) && (!nearBuf || await put(`${id}/dem_near.bin`, nearBuf)) && await put(`${id}/pack.json`, metaBuf);
   if (ok && peaks) await put(`${id}/peaks.json`, JSON.stringify(peaks));
   if (ok) {
     const list = (await readList()).filter(p => p.id !== id);
@@ -191,7 +201,8 @@ export async function openPlace(id) {
   const [metaBuf, fine, coarse] = await Promise.all([get(`${id}/pack.json`), get(`${id}/dem_fine.bin`), get(`${id}/dem_coarse.bin`)]);
   if (!metaBuf || !fine || !coarse) throw new Error(`The terrain for "${entry.name}" is missing from this device. Download it again.`);
   const meta = JSON.parse(new TextDecoder().decode(metaBuf));
-  return { place: { ...clean(entry), saved: true }, terrain: terrainFromPack(meta, fine, coarse) };
+  const near = meta.near ? await get(`${id}/dem_near.bin`) : null;
+  return { place: { ...clean(entry), saved: true }, terrain: terrainFromPack(meta, fine, coarse, near) };
 }
 
 /** Change name or eye height. No download. */

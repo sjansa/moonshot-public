@@ -6,14 +6,14 @@
 // (in spot mode only). Shadows mode (shadowmap.js) shades the terrain shadows of the sun or the
 // moon at a time on its own time ruler; opts.onTime(date) gets that time on close if it was moved.
 
-import { whereAmI } from './places.js?v=1119.0437-fbafc20';
-import * as astro from './astro.js?v=1119.0437-fbafc20';
-import * as TZ from './tz.js?v=1119.0437-fbafc20';
-import { tick } from './haptic.js?v=1119.0437-fbafc20';
-import { makeSkyGlyph } from './skyglyph.js?v=1119.0437-fbafc20';
-import { fetchElevGrid } from './elev.js?v=1119.0437-fbafc20';
-import { attachShadows } from './shadowmap.js?v=1119.0437-fbafc20';
-import { bodyTrack, solveGrid, solveSpot, elevAt, lonLatToPx, pxToLonLat } from './solver.js?v=1119.0437-fbafc20';
+import { whereAmI } from './places.js?v=1119.0458-060f738';
+import * as astro from './astro.js?v=1119.0458-060f738';
+import * as TZ from './tz.js?v=1119.0458-060f738';
+import { tick } from './haptic.js?v=1119.0458-060f738';
+import { makeSkyGlyph } from './skyglyph.js?v=1119.0458-060f738';
+import { fetchElevGrid } from './elev.js?v=1119.0458-060f738';
+import { attachShadows } from './shadowmap.js?v=1119.0458-060f738';
+import { bodyTrack, solveGrid, solveSpot, elevAt, lonLatToPx, pxToLonLat } from './solver.js?v=1119.0458-060f738';
 
 const LINE_KM = 20;
 let leafletReady = null;

@@ -8,9 +8,9 @@
 // carries the motion. Either way the result is only as good as the compass:
 // align.js removes what is left.
 
-import { D2R } from './terrain.js?v=1119.0437-fbafc20';
-import { matMul, yawMat } from './camera.js?v=1119.0437-fbafc20';
-import { isBackCamera } from './lens.js?v=1119.0437-fbafc20';
+import { D2R } from './terrain.js?v=1119.0458-060f738';
+import { matMul, yawMat } from './camera.js?v=1119.0458-060f738';
+import { isBackCamera } from './lens.js?v=1119.0458-060f738';
 
 export async function startCamera(video, deviceId) {
   const stream = await navigator.mediaDevices.getUserMedia({

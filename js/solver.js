@@ -1,7 +1,7 @@
 // solver.js -- where must an observer stand so that a body rises/sets behind a subject? No DOM.
 // Angles in radians unless a name ends in Deg. Elevation grids are in web-mercator pixel space.
-import { R_EFF, R_EARTH, D2R, TAU } from '../core/terrain.js?v=1119.0437-fbafc20';
-import * as astro from './astro.js?v=1119.0437-fbafc20';
+import { R_EFF, R_EARTH, D2R, TAU } from '../core/terrain.js?v=1119.0458-060f738';
+import * as astro from './astro.js?v=1119.0458-060f738';
 
 const MIN_D = 300, LOS_N = 64, M_DEG = R_EARTH * D2R;
 

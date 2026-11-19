@@ -8,13 +8,13 @@
 // between, drawn for the whole view, with high ground seeing past the sea-level horizon
 // (coarse terrain for the view). Both use the same darkness for the same sun, so they
 // cross-fade into each other at the zoom where terrain takes over.
-import * as astro from './astro.js?v=1119.0437-fbafc20';
-import * as TZ from './tz.js?v=1119.0437-fbafc20';
-import { Ruler } from './ruler.js?v=1119.0437-fbafc20';
-import { tick } from './haptic.js?v=1119.0437-fbafc20';
-import { fetchElevGrid, gridTiles, MAX_ZOOM } from './elev.js?v=1119.0437-fbafc20';
-import { pxToLonLat, lonLatToPx } from './solver.js?v=1119.0437-fbafc20';
-import { altLattice, castNested, discFraction, skyShade, latticeAt } from './shadow.js?v=1119.0437-fbafc20';
+import * as astro from './astro.js?v=1119.0458-060f738';
+import * as TZ from './tz.js?v=1119.0458-060f738';
+import { Ruler } from './ruler.js?v=1119.0458-060f738';
+import { tick } from './haptic.js?v=1119.0458-060f738';
+import { fetchElevGrid, gridTiles, MAX_ZOOM } from './elev.js?v=1119.0458-060f738';
+import { pxToLonLat, lonLatToPx } from './solver.js?v=1119.0458-060f738';
+import { altLattice, castNested, discFraction, skyShade, latticeAt } from './shadow.js?v=1119.0458-060f738';
 
 const R2D = 180 / Math.PI, D2R = Math.PI / 180;
 const MIN_MAP_ZOOM = 7;                       // wider than this: the earth's day and night only, no terrain
