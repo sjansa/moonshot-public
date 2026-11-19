@@ -6,14 +6,14 @@
 // (in spot mode only). Shadows mode (shadowmap.js) shades the terrain shadows of the sun or the
 // moon at a time on its own time ruler; opts.onTime(date) gets that time on close if it was moved.
 
-import { whereAmI } from './places.js?v=1118.0316-c1b486d';
-import * as astro from './astro.js?v=1118.0316-c1b486d';
-import * as TZ from './tz.js?v=1118.0316-c1b486d';
-import { tick } from './haptic.js?v=1118.0316-c1b486d';
-import { makeSkyGlyph } from './skyglyph.js?v=1118.0316-c1b486d';
-import { fetchElevGrid } from './elev.js?v=1118.0316-c1b486d';
-import { attachShadows } from './shadowmap.js?v=1118.0316-c1b486d';
-import { bodyTrack, solveGrid, solveSpot, elevAt, lonLatToPx, pxToLonLat } from './solver.js?v=1118.0316-c1b486d';
+import { whereAmI } from './places.js?v=1118.1811-86b42d8';
+import * as astro from './astro.js?v=1118.1811-86b42d8';
+import * as TZ from './tz.js?v=1118.1811-86b42d8';
+import { tick } from './haptic.js?v=1118.1811-86b42d8';
+import { makeSkyGlyph } from './skyglyph.js?v=1118.1811-86b42d8';
+import { fetchElevGrid } from './elev.js?v=1118.1811-86b42d8';
+import { attachShadows } from './shadowmap.js?v=1118.1811-86b42d8';
+import { bodyTrack, solveGrid, solveSpot, elevAt, lonLatToPx, pxToLonLat } from './solver.js?v=1118.1811-86b42d8';
 
 const LINE_KM = 20;
 let leafletReady = null;
@@ -83,7 +83,8 @@ const CSS = `
 .mp-sq{min-width:40px;padding:0}
 .mp-loc{padding:0;display:grid;place-items:center}.mp-loc svg{width:22px;height:22px;fill:var(--blue);stroke:var(--blue);stroke-width:1.5;stroke-linejoin:round}
 .mp-tri{width:0;height:0;border-left:11px solid transparent;border-right:11px solid transparent;border-bottom:22px solid #e5483a;filter:drop-shadow(0 0 2px #fff)}
-.mp-shade{image-rendering:auto}
+.mp-shade{image-rendering:auto;transition:opacity .45s ease}
+.leaflet-zoom-anim .mp-shade{transition:transform .25s cubic-bezier(0,0,.25,1),opacity .45s ease}
 .mp-ruler{height:96px;border-radius:14px;overflow:hidden;transition:height .45s var(--ease)}
 .mp-ruler.rl-root{background:rgba(0,0,0,.22);border:0}
 .mp-min .mp-ruler{height:76px}

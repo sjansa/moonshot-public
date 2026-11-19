@@ -14,8 +14,8 @@
 // - Nested grids: a coarse, wide grid first, then finer ones inside it. A finer grid takes
 //   the rays crossing its upstream edges from the next coarser one, so a ridge 30 km away
 //   still shades a 250 m view drawn from 4 m terrain.
-import { D2R, R_EARTH } from '../core/terrain.js?v=1118.0316-c1b486d';
-import { pxToLonLat } from './solver.js?v=1118.0316-c1b486d';
+import { D2R, R_EARTH } from '../core/terrain.js?v=1118.1811-86b42d8';
+import { pxToLonLat } from './solver.js?v=1118.1811-86b42d8';
 
 const EQUATOR_M = 40075016.686;
 export const NONE = -1e9;                 // ray height for "no ray": nothing upstream blocks the light
@@ -43,6 +43,25 @@ export function altLattice(bbox, altFn, n = 6) {
   }
   return { n, alt, tan, X0: toX(w), X1: toX(e), Y0: toY(nn), Y1: toY(s) };
 }
+
+/**
+ * Darkness (0..1 opacity of the shade colour) of ground the sun does not reach, by the sun's
+ * geometric altitude in degrees: skylight in the day and through civil twilight, then a step
+ * darker at the end of civil (-6), nautical (-12) and astronomical (-18) twilight. Each step is
+ * eased over a degree so the bands read as bands without a hard line.
+ */
+export const TWILIGHT = [[-6, 0.64], [-12, 0.76], [-18, 0.86]], DAY_SHADE = 0.5;
+export function skyShade(altDeg) {
+  let a = DAY_SHADE, prev = DAY_SHADE;
+  for (const [t, v] of TWILIGHT) {
+    const u = Math.max(0, Math.min(1, (t + 0.5 - altDeg)));
+    a += (v - prev) * u * u * (3 - 2 * u); prev = v;
+  }
+  return a;
+}
+
+/** Value of a lattice array (lattice.alt, lattice.tan, ...) at world pixel (X, Y) at zoom 0. */
+export function latticeAt(L, arr, X, Y) { return lat2(L, arr, X, Y); }
 
 // bilinear lattice lookup at world pixel (X, Y), clamped to the lattice
 function lat2(L, arr, X, Y) {

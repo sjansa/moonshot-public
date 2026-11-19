@@ -1,5 +1,5 @@
 // elev.js -- elevation grids from AWS Terrarium tiles (browser). See solver.js for the grid shape.
-import { lonLatToPx } from './solver.js?v=1118.0316-c1b486d';
+import { lonLatToPx } from './solver.js?v=1118.1811-86b42d8';
 
 const URL_T = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';
 const CACHE_MAX = 64, cache = new Map();   // key -> Float32Array(65536), insertion-ordered (oldest first)

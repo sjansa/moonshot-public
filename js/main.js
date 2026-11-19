@@ -1,21 +1,21 @@
 // main.js -- state, wiring, readouts, URL state, startup. The menu (menu.js) gets the functions it needs through initMenu().
-import { observer, sunMoon, altAz, path, Body, milkyWay, milkyWayAt, nightSky, enu } from './astro.js?v=1118.0316-c1b486d';
-import { loadSkyArt } from './skyart.js?v=1118.0316-c1b486d';
-import * as TZ from './tz.js?v=1118.0316-c1b486d';
-import { Ruler } from './ruler.js?v=1118.0316-c1b486d';
-import { makeHorizon, terrainEvents, hidden } from './horizon.js?v=1118.0316-c1b486d';
-import { DEMO, demoTerrain } from './demo.js?v=1118.0316-c1b486d';
-import { draw } from './draw.js?v=1118.0316-c1b486d';
-import { clampView, attachGestures } from './view.js?v=1118.0316-c1b486d';
-import { SENSORS } from './optics.js?v=1118.0316-c1b486d';
-import { listPlaces, openPlace, getLastPlaceId, setLastPlaceId, loadPeaks } from './places.js?v=1118.0316-c1b486d';
-import { visiblePeaks } from './peaks.js?v=1118.0316-c1b486d';
-import { initMenu } from './menu.js?v=1118.0316-c1b486d';
-import { tick } from './haptic.js?v=1118.0316-c1b486d';
-import { AR } from './ar.js?v=1118.0316-c1b486d';
-import { openCameraLink } from './cameralink.js?v=1118.0316-c1b486d';
-import { initCamCtl } from './camctl.js?v=1118.0316-c1b486d';
-import { whereAmI } from './places.js?v=1118.0316-c1b486d';
+import { observer, sunMoon, altAz, path, Body, milkyWay, milkyWayAt, nightSky, enu } from './astro.js?v=1118.1811-86b42d8';
+import { loadSkyArt } from './skyart.js?v=1118.1811-86b42d8';
+import * as TZ from './tz.js?v=1118.1811-86b42d8';
+import { Ruler } from './ruler.js?v=1118.1811-86b42d8';
+import { makeHorizon, terrainEvents, hidden } from './horizon.js?v=1118.1811-86b42d8';
+import { DEMO, demoTerrain } from './demo.js?v=1118.1811-86b42d8';
+import { draw } from './draw.js?v=1118.1811-86b42d8';
+import { clampView, attachGestures } from './view.js?v=1118.1811-86b42d8';
+import { SENSORS } from './optics.js?v=1118.1811-86b42d8';
+import { listPlaces, openPlace, getLastPlaceId, setLastPlaceId, loadPeaks } from './places.js?v=1118.1811-86b42d8';
+import { visiblePeaks } from './peaks.js?v=1118.1811-86b42d8';
+import { initMenu } from './menu.js?v=1118.1811-86b42d8';
+import { tick } from './haptic.js?v=1118.1811-86b42d8';
+import { AR } from './ar.js?v=1118.1811-86b42d8';
+import { openCameraLink } from './cameralink.js?v=1118.1811-86b42d8';
+import { initCamCtl } from './camctl.js?v=1118.1811-86b42d8';
+import { whereAmI } from './places.js?v=1118.1811-86b42d8';
 
 const R2D = 180 / Math.PI;
 

@@ -1,11 +1,11 @@
 // draw.js -- everything painted on the canvas (PLAN 7.2, 7.3). All sizes are device pixels.
-import { skyTAt } from './horizon.js?v=1118.0316-c1b486d';
-import { drawPeaks } from './peaks.js?v=1118.0316-c1b486d';
-import { screenCamera, cameraGeometry } from './view.js?v=1118.0316-c1b486d';
-import { format as tzFormat } from './tz.js?v=1118.0316-c1b486d';
-import { TAU, D2R } from '../core/terrain.js?v=1118.0316-c1b486d';
-import { Camera } from '../core/camera.js?v=1118.0316-c1b486d';
-import { art, milkyWayLayer, northTurn } from './skyart.js?v=1118.0316-c1b486d';
+import { skyTAt } from './horizon.js?v=1118.1811-86b42d8';
+import { drawPeaks } from './peaks.js?v=1118.1811-86b42d8';
+import { screenCamera, cameraGeometry } from './view.js?v=1118.1811-86b42d8';
+import { format as tzFormat } from './tz.js?v=1118.1811-86b42d8';
+import { TAU, D2R } from '../core/terrain.js?v=1118.1811-86b42d8';
+import { Camera } from '../core/camera.js?v=1118.1811-86b42d8';
+import { art, milkyWayLayer, northTurn } from './skyart.js?v=1118.1811-86b42d8';
 
 const clamp01 = x => Math.min(1, Math.max(0, x));
 const lerp = (a, b, t) => a + (b - a) * t;

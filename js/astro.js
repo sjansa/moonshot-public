@@ -1,6 +1,6 @@
 // Sun, moon and Milky Way positions. No DOM. Angles in radians unless the name
 // ends in Deg. Directions are ENU unit vectors [east, north, up].
-import * as A from '../vendor/astronomy.js?v=1118.0316-c1b486d';
+import * as A from '../vendor/astronomy.js?v=1118.1811-86b42d8';
 
 export const Body = A.Body;
 
@@ -43,6 +43,23 @@ export function sunMoon(date, obs) {
 export function altAz(body, date, obs) {
   const p = bodyPos(body, toTime(date), obs);
   return { az: p.az, alt: p.alt };
+}
+
+/**
+ * Altitude of a body anywhere on the earth at one moment, cheaply: (latDeg, lonDeg, refract = true)
+ * -> radians, topocentric at sea level on a sphere, refracted as altAz() is (geometric with refract false).
+ * For shading whole regions, where altAz() per point would be too slow.
+ */
+export function altField(body, date) {
+  const t = toTime(date);
+  const eq = A.EquatorFromVector(A.RotateVector(A.Rotation_EQJ_EQD(t), A.GeoVector(body, t, true)));
+  const dec = eq.dec * D2R, lon0 = (eq.ra - A.SiderealTime(t)) * 15 * D2R;
+  const sd = Math.sin(dec), cd = Math.cos(dec), sinP = 6371.0 / (eq.dist * A.KM_PER_AU);
+  return (latDeg, lonDeg, refract = true) => {
+    const p = latDeg * D2R, g = Math.asin(Math.max(-1, Math.min(1, Math.sin(p) * sd + Math.cos(p) * cd * Math.cos(lonDeg * D2R - lon0))));
+    const a = Math.atan2(Math.sin(g) - sinP, Math.cos(g));     // seen from the surface, not the centre
+    return refract ? a + A.Refraction('normal', a * R2D) * D2R : a;
+  };
 }
 
 export function path(body, obs, startDate, hours = 24, stepMin = 10) {

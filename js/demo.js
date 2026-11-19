@@ -1,5 +1,5 @@
 // demo.js -- deterministic synthetic terrain for tests and ?demo. No DOM.
-import { Grid, Terrain } from '../core/terrain.js?v=1118.0316-c1b486d';
+import { Grid, Terrain } from '../core/terrain.js?v=1118.1811-86b42d8';
 
 export const DEMO = { lat: 40.58, lon: -111.83, name: 'Demo ridge' };
 
