@@ -7,9 +7,9 @@
 //
 // Nothing here touches browser globals at import time (tests run it in Node).
 
-import { buildTerrain, estimate, expandBbox, DEM_UNIT } from '../core/build.js?v=1119.0458-060f738';
-import { Grid, Terrain } from '../core/terrain.js?v=1119.0458-060f738';
-import { fetchNear, in3dep, ATTRIBUTION as NEAR_ATTRIBUTION } from './lidar.js?v=1119.0458-060f738';
+import { buildTerrain, estimate, expandBbox, DEM_UNIT } from '../core/build.js?v=1120.1904-45b57d5';
+import { Grid, Terrain } from '../core/terrain.js?v=1120.1904-45b57d5';
+import { fetchNear, in3dep, ATTRIBUTION as NEAR_ATTRIBUTION } from './lidar.js?v=1120.1904-45b57d5';
 
 export const REACH = { normal: { km: 60, coarseRes: 60 }, far: { km: 120, coarseRes: 120 } };
 export const FINE_KM = 8, FINE_RES = 10;

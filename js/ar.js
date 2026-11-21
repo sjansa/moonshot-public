@@ -16,11 +16,11 @@
 // (back of the phone facing where the lens looks); the fixed offset between the
 // two is taken up by the skyline match and by dragging.
 
-import { buildPano, chainCrests } from '../core/terrain.js?v=1119.0458-060f738';
-import { Camera, matMul, yawMat, pitchRollMat, orthonormalize, yprFromRot, rotFromYPR, IDENT } from '../core/camera.js?v=1119.0458-060f738';
-import { analyzeFrame, alignModel, solveAlignment } from '../core/align.js?v=1119.0458-060f738';
-import { startCamera, Orientation } from '../core/sensors.js?v=1119.0458-060f738';
-import { declination } from '../core/geomag.js?v=1119.0458-060f738';
+import { buildPano, chainCrests } from '../core/terrain.js?v=1120.1904-45b57d5';
+import { Camera, matMul, yawMat, pitchRollMat, orthonormalize, yprFromRot, rotFromYPR, IDENT } from '../core/camera.js?v=1120.1904-45b57d5';
+import { analyzeFrame, alignModel, solveAlignment } from '../core/align.js?v=1120.1904-45b57d5';
+import { startCamera, Orientation } from '../core/sensors.js?v=1120.1904-45b57d5';
+import { declination } from '../core/geomag.js?v=1120.1904-45b57d5';
 
 const DEFAULT_HFOV = 64;          // phone main camera, video mode, along the long side of the frame
 const ZOOMS = [1, 0.6, 1.65];     // focal guesses while the lens is unknown: main, ultra-wide, tele

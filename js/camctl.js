@@ -1,7 +1,7 @@
 // camctl.js -- the camera controls shown over a USB camera's live view: ISO,
 // shutter, aperture, exposure compensation, drive (self-timer, number of shots,
 // interval, bulb time) and the shutter button. Talks to cameralink.CameraLink.
-import { LABEL, choices, shutterLabel } from './cameralink.js?v=1119.0458-060f738';
+import { LABEL, choices, shutterLabel } from './cameralink.js?v=1120.1904-45b57d5';
 
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const KEYS = ['iso', 'shutter', 'fnumber', 'ev'];

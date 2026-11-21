@@ -154,6 +154,6 @@ export class CameraLink {
 /** The camera link for this run: native, the mock (?mockcam), or null. */
 export async function openCameraLink() {
   let plugin = nativePlugin();
-  if (!plugin && /[?&]mockcam\b/.test(location.search)) plugin = (await import('./cameramock.js?v=1119.0458-060f738')).mockPlugin();
+  if (!plugin && /[?&]mockcam\b/.test(location.search)) plugin = (await import('./cameramock.js?v=1120.1904-45b57d5')).mockPlugin();
   return plugin ? new CameraLink(plugin) : null;
 }

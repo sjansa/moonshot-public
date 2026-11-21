@@ -14,8 +14,8 @@
 // - Nested grids: a coarse, wide grid first, then finer ones inside it. A finer grid takes
 //   the rays crossing its upstream edges from the next coarser one, so a ridge 30 km away
 //   still shades a 250 m view drawn from 4 m terrain.
-import { D2R, R_EARTH } from '../core/terrain.js?v=1119.0458-060f738';
-import { pxToLonLat } from './solver.js?v=1119.0458-060f738';
+import { D2R, R_EARTH } from '../core/terrain.js?v=1120.1904-45b57d5';
+import { pxToLonLat } from './solver.js?v=1120.1904-45b57d5';
 
 const EQUATOR_M = 40075016.686;
 export const NONE = -1e9;                 // ray height for "no ray": nothing upstream blocks the light
