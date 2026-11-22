@@ -2,7 +2,7 @@
 // browser (?mockcam). Same calls and events as the native CameraLink plugin:
 // live frames of a drawn ridge, Sony-style settings, shots that take the
 // exposure time.
-import { SHUTTER_LADDER, shutterSeconds } from './cameralink.js?v=1120.1904-45b57d5';
+import { SHUTTER_LADDER, shutterSeconds } from './cameralink.js?v=1122.0212-79fa2c9';
 
 export function mockPlugin() {
   const fns = {};

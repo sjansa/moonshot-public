@@ -1,21 +1,22 @@
 // main.js -- state, wiring, readouts, URL state, startup. The menu (menu.js) gets the functions it needs through initMenu().
-import { observer, sunMoon, altAz, path, Body, milkyWay, milkyWayAt, nightSky, enu } from './astro.js?v=1120.1904-45b57d5';
-import { loadSkyArt } from './skyart.js?v=1120.1904-45b57d5';
-import * as TZ from './tz.js?v=1120.1904-45b57d5';
-import { Ruler } from './ruler.js?v=1120.1904-45b57d5';
-import { makeHorizon, terrainEvents, hidden } from './horizon.js?v=1120.1904-45b57d5';
-import { DEMO, demoTerrain } from './demo.js?v=1120.1904-45b57d5';
-import { draw } from './draw.js?v=1120.1904-45b57d5';
-import { clampView, attachGestures } from './view.js?v=1120.1904-45b57d5';
-import { SENSORS } from './optics.js?v=1120.1904-45b57d5';
-import { listPlaces, openPlace, getLastPlaceId, setLastPlaceId, loadPeaks } from './places.js?v=1120.1904-45b57d5';
-import { visiblePeaks } from './peaks.js?v=1120.1904-45b57d5';
-import { initMenu } from './menu.js?v=1120.1904-45b57d5';
-import { tick } from './haptic.js?v=1120.1904-45b57d5';
-import { AR } from './ar.js?v=1120.1904-45b57d5';
-import { openCameraLink } from './cameralink.js?v=1120.1904-45b57d5';
-import { initCamCtl } from './camctl.js?v=1120.1904-45b57d5';
-import { whereAmI } from './places.js?v=1120.1904-45b57d5';
+import { observer, sunMoon, altAz, path, Body, milkyWay, milkyWayAt, nightSky, enu } from './astro.js?v=1122.0212-79fa2c9';
+import { loadSkyArt } from './skyart.js?v=1122.0212-79fa2c9';
+import * as TZ from './tz.js?v=1122.0212-79fa2c9';
+import { Ruler } from './ruler.js?v=1122.0212-79fa2c9';
+import { makeHorizon, terrainEvents, hidden } from './horizon.js?v=1122.0212-79fa2c9';
+import { DEMO, demoTerrain } from './demo.js?v=1122.0212-79fa2c9';
+import { draw } from './draw.js?v=1122.0212-79fa2c9';
+import { clampView, attachGestures } from './view.js?v=1122.0212-79fa2c9';
+import { SENSORS } from './optics.js?v=1122.0212-79fa2c9';
+import { listPlaces, openPlace, getLastPlaceId, setLastPlaceId, loadPeaks } from './places.js?v=1122.0212-79fa2c9';
+import { visiblePeaks } from './peaks.js?v=1122.0212-79fa2c9';
+import { initMenu } from './menu.js?v=1122.0212-79fa2c9';
+import { tick } from './haptic.js?v=1122.0212-79fa2c9';
+import { AR } from './ar.js?v=1122.0212-79fa2c9';
+import { openCameraLink } from './cameralink.js?v=1122.0212-79fa2c9';
+import { initCamCtl } from './camctl.js?v=1122.0212-79fa2c9';
+import { whereAmI, createPlace, nameFor } from './places.js?v=1122.0212-79fa2c9';
+import { planFrom, aimAt, getPlan } from './plans.js?v=1122.0212-79fa2c9';
 
 const R2D = 180 / Math.PI;
 
@@ -173,15 +174,18 @@ export function setView({ azDeg, altDeg, hfovDeg } = {}) {
  * Choose a place: builds the horizon and the observer, then refreshes everything.
  * id / reach are set for saved places (and kept in the link); the demo has neither.
  */
-export function setPlace({ name, lat, lon, terrain, eyeM = 1.7, maxDist = 60000, id = null, reach = null }) {
+export function setPlace({ name, lat, lon, terrain, eyeM = 1.7, maxDist = 60000, id = null, reach = null }, { keep = false } = {}) {
   const ground = terrain.elev(lon, lat);
   S.place = { id, name, lat, lon, eyeM, maxDist, reach: reach || (maxDist > 60000 ? 'far' : 'normal') };
   S.terrain = terrain;
   S.obs = observer(lat, lon, Number.isFinite(ground) ? ground : 0);
   S.horizon = makeHorizon(terrain, lat, lon, eyeM, maxDist);
   S.placeSeq++;
-  if (ar?.on) setAR(false);
-  S.subject = null;
+  // keep: the live camera moved to where you stand; it stays on, still aimed at the same subject
+  if (ar?.on && !keep) setAR(false);
+  const prev = S.subject;
+  S.subject = keep && prev?.target ? retarget(prev) : null;
+  if (keep && ar?.on) ar.placeChanged();
   S.peaks = [];
   if (id) {
     const seq = S.placeSeq;
@@ -196,13 +200,20 @@ export function setPlace({ name, lat, lon, terrain, eyeM = 1.7, maxDist = 60000,
   showDrawer(DRAWER_FIRST_MS);
 }
 
+/** The subject seen from the place in use: the same point on the ground, aimed at anew. */
+function retarget(sj) {
+  const a = aimAt(S.place.lat, S.place.lon, S.obs.height + S.place.eyeM, sj.target);
+  return a ? { ...sj, az: a.az, alt: a.alt, dir: enu(a.az, a.alt) } : null;
+}
+
 /**
  * A subject-solver result for the place just shown: go to the alignment moment, aim at the
  * subject, mark it, show the body, and put the ruler on its 2 hour span for exact timing.
  */
 export function applyPlan(plan) {
   const az = plan.azDeg * Math.PI / 180, alt = plan.altDeg * Math.PI / 180;
-  S.subject = { az, alt, dir: enu(az, alt), body: plan.body, kind: plan.kind };
+  const tg = plan.subject || plan.target;
+  S.subject = { az, alt, dir: enu(az, alt), body: plan.body, kind: plan.kind, target: tg?.lat != null ? { lat: tg.lat, lon: tg.lon, elev: tg.elev, name: tg.name || null } : null };
   S.show[plan.body === 'gc' ? 'milkyWay' : plan.body] = true;
   ruler.setSpan(2 * 3600e3);
   setTime(new Date(Math.round(+plan.time / 1000) * 1000));
@@ -211,10 +222,43 @@ export function applyPlan(plan) {
 }
 
 /** Show a place from storage ({place, terrain} as openPlace / createPlace return it) and remember it. */
-export function usePlace({ place, terrain }) {
-  setPlace({ name: place.name, lat: place.lat, lon: place.lon, terrain, eyeM: place.eyeM ?? 1.7, maxDist: place.reach === 'far' ? 120000 : 60000, id: place.id, reach: place.reach });
+export function usePlace({ place, terrain }, opts) {
+  setPlace({ name: place.name, lat: place.lat, lon: place.lon, terrain, eyeM: place.eyeM ?? 1.7, maxDist: place.reach === 'far' ? 120000 : 60000, id: place.id, reach: place.reach }, opts);
   if (place.saved !== false) setLastPlaceId(place.id).catch(() => {});
 }
+
+/** A saved plan for what is on screen now (plans.js); name may be left out. */
+export const currentPlan = name => (S.place?.id ? planFrom(S, name) : null);
+
+/**
+ * Load a saved plan on the place it was made for (already shown by the caller, or a place
+ * within 50 m): time, aim, lens, the subject (aimed anew if the place moved) and the layers.
+ */
+export function loadPlan(plan) {
+  if (plan.tz && plan.tz !== 'device' && plan.tz !== S.tz) setTz(plan.tz);
+  for (const k of ['sun', 'moon', 'milkyWay']) if (plan.show?.[k] != null) S.show[k] = plan.show[k];
+  syncDock();
+  const c = plan.camera;
+  if (c) setCamera({ sensor: c.sensor, focal: c.focal, portrait: c.portrait, on: c.on });
+  const sj = plan.subject;
+  S.subject = null;
+  if (sj) {
+    const az = sj.azDeg * Math.PI / 180, alt = sj.altDeg * Math.PI / 180;
+    S.subject = { az, alt, dir: enu(az, alt), body: sj.body, kind: sj.kind, target: sj.target || null };
+    if (sj.target && metersApart(S.place, plan.place) > 5) S.subject = retarget(S.subject) || S.subject;
+  }
+  ruler.setSpan(2 * 3600e3);
+  setTime(new Date(plan.time));
+  setView({ azDeg: plan.view.azDeg, altDeg: plan.view.altDeg, hfovDeg: c?.on ? undefined : plan.view.hfovDeg });
+  ruler.invalidate();
+  changed();
+}
+const syncDock = () => {
+  for (const b of document.querySelectorAll('#bar .tog:not(#more)')) {
+    const k = layer[b.dataset.k];
+    if (k) b.setAttribute('aria-pressed', !!S.show[k]);
+  }
+};
 
 /** The built-in demo ridge. */
 export function useDemo() { setPlace({ ...DEMO, terrain: demoTerrain() }); }
@@ -316,18 +360,51 @@ export async function setAR(on, source = 'phone') {
     if (arPrev && !want) setView({ altDeg: Math.max(-5, Math.min(30, S.view.altDeg)), hfovDeg: arPrev.hfovDeg });
   }
   if (!want) return;
-  if (!S.place?.id) { menu.open('place', want === 'camera' ? 'The camera view needs a downloaded location: use Current location.' : 'AR needs a downloaded location: use Current location.'); return; }
   arPrev = { ...S.view };
   arBtn.setAttribute('aria-pressed', true);
   try {
     if (want === 'camera') { await camLink.setLive(true); await ar.start({ link: camLink, fnGuess: fnFromMenu() }); camCtl.show(true); }
     else await ar.start();
     setTime(nowMinute());
-    whereAmI().then(p => {                         // the overlay is drawn from the chosen location, not from where the phone is
-      const km = metersApart(p, S.place) / 1000;
-      if (ar.on && km > 0.3) arSay(`You are ${km < 10 ? km.toFixed(1) : Math.round(km)} km from ${S.place.name}; the ridges are drawn from there. Download Current location to match.`, 'bad');
-    }).catch(() => {});
+    followHere();
   } catch (e) { ar.stop(); arBtn.setAttribute('aria-pressed', false); arSay(''); camCtl?.show(false); menu.note(e.message); menu.open('place'); }
+}
+
+// ---- live camera: draw from where you stand ----
+// On entry the phone's position is asked for. Within HERE_M of the place in use nothing changes;
+// else a saved place that close is opened, or one is downloaded for the spot. The subject, time
+// and aim are kept (the subject re-aimed from the new spot).
+const HERE_M = 50, POOR_FIX_M = 150;
+let hereSeq = 0;
+async function followHere() {
+  const seq = ++hereSeq, live = () => ar.on && seq === hereSeq;
+  let p;
+  try { p = await whereAmI(); } catch (e) {
+    if (live()) arSay(S.place?.id ? `${e.message} The ridges are drawn from ${S.place.name}.` : e.message, 'bad');
+    return;
+  }
+  if (!live()) return;
+  if (S.place?.id && metersApart(p, S.place) <= Math.max(HERE_M, Math.min(p.acc, POOR_FIX_M))) return;
+  if (p.acc > POOR_FIX_M) { arSay(`Your position is only known to ${Math.round(p.acc)} m, so the ridges stay drawn from ${S.place?.name || 'the chosen place'}.`, 'bad'); return; }
+  const view = { ...S.view }, date = S.date;
+  const hit = (await listPlaces().catch(() => [])).map(x => ({ x, d: metersApart(p, x) })).filter(o => o.d <= HERE_M).sort((a, b) => a.d - b.d)[0];
+  try {
+    let r;
+    if (hit) r = await openPlace(hit.x.id);
+    else {
+      arSay('Downloading the terrain where you stand…');
+      const name = await Promise.race([nameFor(p.lat, p.lon).then(n => n?.name).catch(() => null), new Promise(res => setTimeout(res, 3000, null))]);
+      r = await createPlace({ name: name || `Here ${p.lat.toFixed(4)}, ${p.lon.toFixed(4)}`, lat: p.lat, lon: p.lon, eyeM: S.place?.eyeM ?? 1.7, reach: S.place?.reach || 'normal' },
+        (f, m) => { if (live()) arSay(`${m} ${Math.round(100 * f)}%`); });
+    }
+    if (!live()) return;
+    usePlace(r, { keep: true });
+    setTime(date); setView(view);
+    arSay(`Drawing from where you stand: ${r.place.name}.`);
+    setTimeout(() => { if (seq === hereSeq) arSay(''); }, 4000);
+  } catch (e) {
+    if (live()) arSay(S.place?.id ? `Could not get the terrain where you stand (${e.message}). The ridges are drawn from ${S.place.name}.` : e.message, 'bad');
+  }
 }
 // the compass button: the USB camera's view when one is attached, else the phone camera
 arBtn.addEventListener('click', () => setAR(!ar.on, camLink?.state.attached && camLink.state.supported ? 'camera' : 'phone'));
@@ -383,7 +460,7 @@ const num = k => numOr(q.get(k));
 const isDemo = q.has('demo');
 for (const k of (q.get('off') || '').split(',')) if (k in S.show) S.show[k] = false;   // testing: ?off=ridges,scales
 resize();
-const menu = initMenu({ S, setPlace, usePlace, applyPlan, useDemo, setEye, setTime, setView, setTz, setCamera, requestDraw, onChange, invalidate: () => { ruler.invalidate(); updateLines(); requestDraw(); } });
+const menu = initMenu({ S, setPlace, usePlace, applyPlan, loadPlan, currentPlan, useDemo, setEye, setTime, setView, setTz, setCamera, requestDraw, onChange, invalidate: () => { ruler.invalidate(); updateLines(); requestDraw(); } });
 
 async function start() {
   const hash = parseHash();
@@ -414,6 +491,10 @@ async function start() {
     hfovDeg: numOr(hash.fov) ?? num('fov') ?? (isDemo ? 40 : 60),
   });
   started = true; scheduleHash();
+  if (hash.plan) {                              // a calendar link: the saved plan, if it is on this device
+    const p = await getPlan(hash.plan).catch(() => null);
+    if (p) menu.openPlan(p);
+  }
 }
 start();
 

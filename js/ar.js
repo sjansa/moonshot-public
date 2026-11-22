@@ -16,11 +16,11 @@
 // (back of the phone facing where the lens looks); the fixed offset between the
 // two is taken up by the skyline match and by dragging.
 
-import { buildPano, chainCrests } from '../core/terrain.js?v=1120.1904-45b57d5';
-import { Camera, matMul, yawMat, pitchRollMat, orthonormalize, yprFromRot, rotFromYPR, IDENT } from '../core/camera.js?v=1120.1904-45b57d5';
-import { analyzeFrame, alignModel, solveAlignment } from '../core/align.js?v=1120.1904-45b57d5';
-import { startCamera, Orientation } from '../core/sensors.js?v=1120.1904-45b57d5';
-import { declination } from '../core/geomag.js?v=1120.1904-45b57d5';
+import { buildPano, chainCrests } from '../core/terrain.js?v=1122.0212-79fa2c9';
+import { Camera, matMul, yawMat, pitchRollMat, orthonormalize, yprFromRot, rotFromYPR, IDENT } from '../core/camera.js?v=1122.0212-79fa2c9';
+import { analyzeFrame, alignModel, solveAlignment } from '../core/align.js?v=1122.0212-79fa2c9';
+import { startCamera, Orientation } from '../core/sensors.js?v=1122.0212-79fa2c9';
+import { declination } from '../core/geomag.js?v=1122.0212-79fa2c9';
 
 const DEFAULT_HFOV = 64;          // phone main camera, video mode, along the long side of the frame
 const ZOOMS = [1, 0.6, 1.65];     // focal guesses while the lens is unknown: main, ultra-wide, tele
@@ -76,12 +76,20 @@ export class AR {
       this.src = this.video;
       this.video.hidden = false;
     }
-    this.orient.declination = declination(S.place.lat, S.place.lon);
     this.on = true;
     document.body.classList.add('ar-on');
     if (this.ext) document.body.classList.add('cam-on');
     this.h.status(this.ext ? (this.sensorsOff ? 'Camera view. Drag to line the ridges up, or tap “Use compass”.' : 'Camera view. Drag to line the ridges up if they are off.')
       : 'Point the phone at the mountains. Drag to line the ridges up if they are off.', '', this.sensorsOff ? 'compass' : null);
+    this.placeChanged();
+    this.raf = requestAnimationFrame(this.loop);
+  }
+
+  /** The location changed while live (or on entry): declination and the full panorama for alignment. */
+  placeChanged() {
+    const S = this.S;
+    this.orient.declination = declination(S.place.lat, S.place.lon);
+    this.model = null; this.locked = false; this.last = null;
     // the full panorama is only needed here, so it is built on entry (the horizon keeps a slim copy)
     setTimeout(() => {
       if (!this.on) return;
@@ -90,7 +98,6 @@ export class AR {
         this.model = alignModel(pano, chainCrests(pano));
       } catch { this.model = null; }
     }, 50);
-    this.raf = requestAnimationFrame(this.loop);
   }
 
   /** From a tap: turn the motion sensors on after a start without them. */

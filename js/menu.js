@@ -1,10 +1,12 @@
 // menu.js -- the Menu sheet: Location, Camera, Display, Info tabs. Built once from the app's
 // functions (passed in by main.js, so there is no import cycle).
-import { whereAmI, terrainEstimate, createPlace, listPlaces, openPlace, removePlace, updatePlace, storageUse, nameFor } from './places.js?v=1120.1904-45b57d5';
-import { pickSpot } from './mappick.js?v=1120.1904-45b57d5';
-import { SENSORS, FOCALS, frameSize, fovDeg, nearestFocalIndex } from './optics.js?v=1120.1904-45b57d5';
-import { tick } from './haptic.js?v=1120.1904-45b57d5';
-import { validZone, getZone } from './tz.js?v=1120.1904-45b57d5';
+import { whereAmI, terrainEstimate, createPlace, listPlaces, openPlace, removePlace, updatePlace, storageUse, nameFor } from './places.js?v=1122.0212-79fa2c9';
+import { pickSpot } from './mappick.js?v=1122.0212-79fa2c9';
+import { SENSORS, FOCALS, frameSize, fovDeg, nearestFocalIndex } from './optics.js?v=1122.0212-79fa2c9';
+import { tick } from './haptic.js?v=1122.0212-79fa2c9';
+import { validZone, getZone, formatFull } from './tz.js?v=1122.0212-79fa2c9';
+import { listPlans, savePlan, removePlan, defaultName } from './plans.js?v=1122.0212-79fa2c9';
+import { addToCalendar, REMINDERS } from './calendar.js?v=1122.0212-79fa2c9';
 
 const R2D = 180 / Math.PI;
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -18,6 +20,7 @@ export function initMenu(api) {
   <header>
     <div class="tabs" role="tablist">
       <button role="tab" data-tab="place" aria-selected="true">Location</button>
+      <button role="tab" data-tab="plans" aria-selected="false">Plans</button>
       <button role="tab" data-tab="camera" aria-selected="false">Camera</button>
       <button role="tab" data-tab="display" aria-selected="false">Display</button>
       <button role="tab" data-tab="info" aria-selected="false">Info</button>
@@ -54,6 +57,17 @@ export function initMenu(api) {
     <div class="legend">Locations on this device</div>
     <div id="pList"></div>
     <div class="est" id="pStore"></div>
+  </div>
+
+  <div class="pane" data-pane="plans" hidden>
+    <div class="cur" id="sCur"></div>
+    <div class="row"><label for="sName">Name</label><input type="text" id="sName" maxlength="80" autocomplete="off"></div>
+    <button class="btn go wide" id="sSave">Save this plan</button>
+    <div class="msg" id="sMsg" role="status"></div>
+    <div class="legend">Saved plans</div>
+    <div id="sList"></div>
+    <div class="legend">Calendar reminders</div>
+    <div id="sRem"></div>
   </div>
 
   <div class="pane" data-pane="camera" hidden>
@@ -105,6 +119,7 @@ export function initMenu(api) {
     tabs.forEach(b => b.setAttribute('aria-selected', b.dataset.tab === name));
     panes.forEach(p => { p.hidden = p.dataset.pane !== name; });
     if (name === 'place') refreshList();
+    if (name === 'plans') refreshPlans();
   }
   function open(name = current, prompt = '') {
     tab(name);
@@ -231,10 +246,11 @@ export function initMenu(api) {
       await nextFrame();
       api.usePlace(r);
       if (d.plan) api.applyPlan(d.plan);   // solver result: the alignment moment, aimed at the subject
+      if (d.saved) api.loadPlan(d.saved);  // a saved plan whose place was not on this device
       draft = null; $('pNew').hidden = true; $('pPrompt').hidden = true;
       say(r.place.saved ? '' : 'This device would not keep the place, so it works until you close the page.');
       refreshList();
-      if (r.place.saved || d.plan) close();
+      if (r.place.saved || d.plan || d.saved) close();
     } catch (e) {
       say(e?.name === 'AbortError' ? 'Download canceled.' : (e?.message || 'The download failed.'), e?.name !== 'AbortError');
     } finally { setBusy(false); abort = null; }
@@ -283,6 +299,83 @@ export function initMenu(api) {
       if (del.dataset.sure !== '1') { del.dataset.sure = '1'; del.textContent = 'Sure?'; setTimeout(() => { del.dataset.sure = ''; del.textContent = 'Delete'; }, 3000); return; }
       try { await removePlace(del.dataset.del); } catch (er) { say(er.message); }
       refreshList();
+    }
+  });
+
+  // ------------------------------------------------------------- plans
+  const sSay = (t, bad = false) => { const m = $('sMsg'); m.textContent = t || ''; m.className = 'msg' + (t && bad ? ' bad' : ''); };
+  let remind = ['day', '2h', 'leave'];
+  try { const v = JSON.parse(localStorage.getItem('moonshot.remind')); if (Array.isArray(v)) remind = v; } catch { /* defaults */ }
+  $('sRem').innerHTML = REMINDERS.map(r => `<label class="sw">${esc(r.label)}<input type="checkbox" data-rem="${r.id}"${remind.includes(r.id) ? ' checked' : ''}></label>`).join('');
+  $('sRem').addEventListener('change', () => {
+    remind = [...$('sRem').querySelectorAll('input:checked')].map(i => i.dataset.rem);
+    try { localStorage.setItem('moonshot.remind', JSON.stringify(remind)); } catch { /* not kept */ }
+  });
+  let plans = [];
+  const until = t => {
+    const d = (Date.parse(t) - Date.now()) / 864e5;
+    return d < -0.05 ? 'past' : d < 1 ? 'within a day' : `in ${Math.round(d)} day${Math.round(d) === 1 ? '' : 's'}`;
+  };
+  async function refreshPlans() {
+    const ok = !!S.place?.id;
+    $('sCur').innerHTML = ok ? `Saves <b>${esc(S.place.name)}</b> at ${esc(formatFull(S.date))}: the aim, the lens${S.subject ? ', the subject' : ''} and the layers shown.`
+      : 'Choose a downloaded location first: a plan is saved for a place on this device.';
+    $('sSave').disabled = !ok;
+    if (document.activeElement !== $('sName')) { $('sName').value = ''; $('sName').placeholder = ok ? defaultName(S) : ''; }
+    try { plans = await listPlans(); } catch { plans = []; }
+    $('sList').innerHTML = plans.length ? plans.map(p => `<div class="area"><button class="sel" data-open="${esc(p.id)}"><b>${esc(p.name)}</b><small>${esc(formatFull(new Date(p.time)))} &middot; ${until(p.time)}</small></button><span class="acts"><button class="btn" data-cal="${esc(p.id)}">Calendar</button><button class="btn danger" data-pdel="${esc(p.id)}">Delete</button></span></div>`).join('')
+      : '<div class="est">No plans yet. Set up a shot (place, time, aim, lens), then save it here.</div>';
+  }
+  $('sSave').addEventListener('click', async () => {
+    const plan = api.currentPlan($('sName').value.trim() || null);
+    if (!plan) return;
+    try { await savePlan(plan); $('sName').value = ''; sSay(`Saved “${plan.name}”. Add it to your calendar below.`); tick(); } catch (e) { sSay(e.message, true); }
+    refreshPlans();
+  });
+  const planLink = p => {
+    if (window.Capacitor?.isNativePlatform?.() || !/^https?:/.test(location.protocol)) return null;
+    const v = p.view, c = p.camera;
+    const h = [`lat=${p.place.lat.toFixed(5)}`, `lon=${p.place.lon.toFixed(5)}`, `t=${p.time.replace(/\.\d+Z$/, 'Z')}`, `az=${v.azDeg.toFixed(1)}`, `alt=${v.altDeg.toFixed(1)}`,
+      c?.on ? `cam=${c.sensor},${Math.round(c.focal)},${c.portrait ? 'p' : 'l'}` : `fov=${v.hfovDeg.toFixed(1)}`, `plan=${p.id}`];
+    return `${location.origin}${location.pathname}#${h.join('&')}`;
+  };
+  async function openPlan(p) {
+    sSay('Opening…');
+    try {
+      if (S.place?.id !== p.place.id) {
+        let r = null;
+        try { r = await openPlace(p.place.id); } catch { /* deleted, or made on another device */ }
+        if (!r) {
+          const near = (await listPlaces()).find(x => Math.hypot((x.lat - p.place.lat) * 110540, (x.lon - p.place.lon) * 111320 * Math.cos(x.lat * Math.PI / 180)) <= 50);
+          if (near) r = await openPlace(near.id);
+        }
+        if (!r) {                          // the terrain is not here: download it, then load the plan
+          sSay('');
+          reach = p.place.reach || 'normal';
+          $('pReach').querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x.dataset.reach === reach));
+          $('pEye').value = p.place.eyeM ?? 1.7;
+          open('place', `The terrain for “${p.name}” is not on this device. Download it to load the plan.`);
+          showDraft({ lat: p.place.lat, lon: p.place.lon, name: p.place.name, saved: p });
+          return;
+        }
+        api.usePlace(r);
+      }
+      api.loadPlan(p); sSay(''); close();
+    } catch (e) { sSay(e.message, true); }
+  }
+  $('sList').addEventListener('click', async e => {
+    const o = e.target.closest('[data-open]'), c = e.target.closest('[data-cal]'), d = e.target.closest('[data-pdel]');
+    const p = plans.find(x => x.id === (o?.dataset.open || c?.dataset.cal || d?.dataset.pdel));
+    if (!p) return;
+    if (o) openPlan(p);
+    else if (c) {
+      try {
+        const r = await addToCalendar(p, { reminders: remind, url: planLink(p) });
+        sSay(r === 'saved' ? 'Added to your calendar.' : r === 'file' ? 'Calendar file made: open it to add the event.' : '');
+      } catch (er) { sSay(er.message || 'The calendar could not be opened.', true); }
+    } else if (d) {
+      if (d.dataset.sure !== '1') { d.dataset.sure = '1'; d.textContent = 'Sure?'; setTimeout(() => { d.dataset.sure = ''; d.textContent = 'Delete'; }, 3000); return; }
+      await removePlan(p.id).catch(() => {}); refreshPlans();
     }
   });
 
@@ -342,5 +435,5 @@ export function initMenu(api) {
   api.onChange(() => { syncCamera(); syncDisplay(); if (!sheet.hidden && current === 'place') showCurrent(); });
   syncCamera(); syncDisplay(); showCurrent();
 
-  return { open, close, tab, note: t => say(t), say };
+  return { open, close, tab, note: t => say(t), say, openPlan };
 }

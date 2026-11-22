@@ -3,8 +3,8 @@
 // coarser elsewhere, resampled to the grid asked for). No key; it answers browsers (CORS).
 // Sent as LERC at half our storage step (12.5 cm): about five times smaller than raw floats.
 // Trial: used for places only, within NEAR_M of the viewer.
-import { Grid } from '../core/terrain.js?v=1120.1904-45b57d5';
-import { DEM_UNIT } from '../core/build.js?v=1120.1904-45b57d5';
+import { Grid } from '../core/terrain.js?v=1122.0212-79fa2c9';
+import { DEM_UNIT } from '../core/build.js?v=1122.0212-79fa2c9';
 import { decodeLerc1 } from '../core/lerc1.js';
 
 const URL3DEP = 'https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/exportImage';

@@ -7,9 +7,9 @@
 //
 // Nothing here touches browser globals at import time (tests run it in Node).
 
-import { buildTerrain, estimate, expandBbox, DEM_UNIT } from '../core/build.js?v=1120.1904-45b57d5';
-import { Grid, Terrain } from '../core/terrain.js?v=1120.1904-45b57d5';
-import { fetchNear, in3dep, ATTRIBUTION as NEAR_ATTRIBUTION } from './lidar.js?v=1120.1904-45b57d5';
+import { buildTerrain, estimate, expandBbox, DEM_UNIT } from '../core/build.js?v=1122.0212-79fa2c9';
+import { Grid, Terrain } from '../core/terrain.js?v=1122.0212-79fa2c9';
+import { fetchNear, in3dep, ATTRIBUTION as NEAR_ATTRIBUTION } from './lidar.js?v=1122.0212-79fa2c9';
 
 export const REACH = { normal: { km: 60, coarseRes: 60 }, far: { km: 120, coarseRes: 120 } };
 export const FINE_KM = 8, FINE_RES = 10;
@@ -129,6 +129,8 @@ async function idb(mode, fn) {
 }
 const get = key => idb('readonly', s => s.get(key)).catch(() => undefined);
 const put = (key, val) => idb('readwrite', s => s.put(val, key)).then(() => true, () => false);
+/** Small records beside the places (plans.js): read one, or write one (resolves false if the device would not keep it). */
+export const kvGet = get, kvPut = put;
 
 const readList = async () => (await get('places')) || [];
 const clean = p => ({ id: p.id, name: p.name, lat: p.lat, lon: p.lon, eyeM: p.eyeM, reach: p.reach, built: p.built, bytes: p.bytes });

@@ -1,6 +1,6 @@
 // peaks.js -- which named peaks can be seen from a place, and where their labels go. No DOM at import time.
-import { R_EFF } from '../core/terrain.js?v=1120.1904-45b57d5';
-import { skyTAt } from './horizon.js?v=1120.1904-45b57d5';
+import { R_EFF } from '../core/terrain.js?v=1122.0212-79fa2c9';
+import { skyTAt } from './horizon.js?v=1122.0212-79fa2c9';
 
 const D2R = Math.PI / 180;
 
