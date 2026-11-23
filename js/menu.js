@@ -1,12 +1,12 @@
 // menu.js -- the Menu sheet: Location, Camera, Display, Info tabs. Built once from the app's
 // functions (passed in by main.js, so there is no import cycle).
-import { whereAmI, terrainEstimate, createPlace, listPlaces, openPlace, removePlace, updatePlace, storageUse, nameFor } from './places.js?v=1122.0212-79fa2c9';
-import { pickSpot } from './mappick.js?v=1122.0212-79fa2c9';
-import { SENSORS, FOCALS, frameSize, fovDeg, nearestFocalIndex } from './optics.js?v=1122.0212-79fa2c9';
-import { tick } from './haptic.js?v=1122.0212-79fa2c9';
-import { validZone, getZone, formatFull } from './tz.js?v=1122.0212-79fa2c9';
-import { listPlans, savePlan, removePlan, defaultName } from './plans.js?v=1122.0212-79fa2c9';
-import { addToCalendar, REMINDERS } from './calendar.js?v=1122.0212-79fa2c9';
+import { whereAmI, terrainEstimate, createPlace, listPlaces, openPlace, removePlace, updatePlace, storageUse, nameFor } from './places.js?v=1122.2110-c56454d';
+import { pickSpot } from './mappick.js?v=1122.2110-c56454d';
+import { SENSORS, FOCALS, frameSize, fovDeg, nearestFocalIndex } from './optics.js?v=1122.2110-c56454d';
+import { tick } from './haptic.js?v=1122.2110-c56454d';
+import { validZone, getZone, formatFull } from './tz.js?v=1122.2110-c56454d';
+import { listPlans, savePlan, removePlan, defaultName } from './plans.js?v=1122.2110-c56454d';
+import { addToCalendar, REMINDERS } from './calendar.js?v=1122.2110-c56454d';
 
 const R2D = 180 / Math.PI;
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));

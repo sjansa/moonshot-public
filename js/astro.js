@@ -1,6 +1,6 @@
 // Sun, moon and Milky Way positions. No DOM. Angles in radians unless the name
 // ends in Deg. Directions are ENU unit vectors [east, north, up].
-import * as A from '../vendor/astronomy.js?v=1122.0212-79fa2c9';
+import * as A from '../vendor/astronomy.js?v=1122.2110-c56454d';
 
 export const Body = A.Body;
 

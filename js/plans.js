@@ -1,7 +1,7 @@
 // plans.js -- saved shot plans: where to stand, what to aim at, when, and with what lens, kept on
 // the device beside the places so a shot worked out at home can be loaded on site. No DOM.
-import { kvGet, kvPut } from './places.js?v=1122.0212-79fa2c9';
-import { R_EFF, R_EARTH, D2R } from '../core/terrain.js?v=1122.0212-79fa2c9';
+import { kvGet, kvPut } from './places.js?v=1122.2110-c56454d';
+import { R_EFF, R_EARTH, D2R } from '../core/terrain.js?v=1122.2110-c56454d';
 
 const KEY = 'plans', M_DEG = R_EARTH * D2R;
 

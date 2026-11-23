@@ -1,22 +1,22 @@
 // main.js -- state, wiring, readouts, URL state, startup. The menu (menu.js) gets the functions it needs through initMenu().
-import { observer, sunMoon, altAz, path, Body, milkyWay, milkyWayAt, nightSky, enu } from './astro.js?v=1122.0212-79fa2c9';
-import { loadSkyArt } from './skyart.js?v=1122.0212-79fa2c9';
-import * as TZ from './tz.js?v=1122.0212-79fa2c9';
-import { Ruler } from './ruler.js?v=1122.0212-79fa2c9';
-import { makeHorizon, terrainEvents, hidden } from './horizon.js?v=1122.0212-79fa2c9';
-import { DEMO, demoTerrain } from './demo.js?v=1122.0212-79fa2c9';
-import { draw } from './draw.js?v=1122.0212-79fa2c9';
-import { clampView, attachGestures } from './view.js?v=1122.0212-79fa2c9';
-import { SENSORS } from './optics.js?v=1122.0212-79fa2c9';
-import { listPlaces, openPlace, getLastPlaceId, setLastPlaceId, loadPeaks } from './places.js?v=1122.0212-79fa2c9';
-import { visiblePeaks } from './peaks.js?v=1122.0212-79fa2c9';
-import { initMenu } from './menu.js?v=1122.0212-79fa2c9';
-import { tick } from './haptic.js?v=1122.0212-79fa2c9';
-import { AR } from './ar.js?v=1122.0212-79fa2c9';
-import { openCameraLink } from './cameralink.js?v=1122.0212-79fa2c9';
-import { initCamCtl } from './camctl.js?v=1122.0212-79fa2c9';
-import { whereAmI, createPlace, nameFor } from './places.js?v=1122.0212-79fa2c9';
-import { planFrom, aimAt, getPlan } from './plans.js?v=1122.0212-79fa2c9';
+import { observer, sunMoon, altAz, path, Body, milkyWay, milkyWayAt, nightSky, enu } from './astro.js?v=1122.2110-c56454d';
+import { loadSkyArt } from './skyart.js?v=1122.2110-c56454d';
+import * as TZ from './tz.js?v=1122.2110-c56454d';
+import { Ruler } from './ruler.js?v=1122.2110-c56454d';
+import { makeHorizon, terrainEvents, hidden } from './horizon.js?v=1122.2110-c56454d';
+import { DEMO, demoTerrain } from './demo.js?v=1122.2110-c56454d';
+import { draw } from './draw.js?v=1122.2110-c56454d';
+import { clampView, attachGestures } from './view.js?v=1122.2110-c56454d';
+import { SENSORS } from './optics.js?v=1122.2110-c56454d';
+import { listPlaces, openPlace, getLastPlaceId, setLastPlaceId, loadPeaks } from './places.js?v=1122.2110-c56454d';
+import { visiblePeaks } from './peaks.js?v=1122.2110-c56454d';
+import { initMenu } from './menu.js?v=1122.2110-c56454d';
+import { tick } from './haptic.js?v=1122.2110-c56454d';
+import { AR } from './ar.js?v=1122.2110-c56454d';
+import { openCameraLink } from './cameralink.js?v=1122.2110-c56454d';
+import { initCamCtl } from './camctl.js?v=1122.2110-c56454d';
+import { whereAmI, createPlace, nameFor } from './places.js?v=1122.2110-c56454d';
+import { planFrom, aimAt, getPlan } from './plans.js?v=1122.2110-c56454d';
 
 const R2D = 180 / Math.PI;
 
@@ -412,6 +412,7 @@ arCompass.addEventListener('click', () => ar.enableSensors().catch(e => arSay(e.
 
 // A camera on the USB port (native app): switch to its view when it is plugged in, back when it is unplugged.
 openCameraLink().then(async link => {
+  console.log('camera link:', link ? 'plugin found' : 'no plugin', 'native', !!window.Capacitor?.isNativePlatform?.());
   if (!link) return;
   camLink = link;
   camCtl = initCamCtl(link, { say: arSay, haptic: tick });
@@ -423,7 +424,8 @@ openCameraLink().then(async link => {
   });
   link.on('detached', () => { if (ar.ext) { setAR(false); arSay('Camera unplugged.'); setTimeout(() => arSay(''), 3000); } });
   await link.start();
-}).catch(e => console.error('camera link', e));
+  console.log('camera link: started');
+}).catch(e => { console.error('camera link', e?.message || e); if (window.Capacitor?.isNativePlatform?.()) arSay(`USB camera link failed: ${e?.message || e}`, 'bad'); });
 
 // ---- link state: #lat=..&lon=..&t=..&az=..&alt=..&fov=..&cam=ff,600,l (written at most once a second) ----
 let hashTimer = 0, lastHash = -1e9, started = false;

@@ -1,7 +1,7 @@
 // skyart.js -- pictures for the sky: the Milky Way panorama, the moon and the sun.
 // Images are NASA material (see app/img/CREDITS.md). Each is used once it has loaded;
 // until then, and if loading fails, draw.js falls back to its plain shapes.
-import { TAU } from '../core/terrain.js?v=1122.0212-79fa2c9';
+import { TAU } from '../core/terrain.js?v=1122.2110-c56454d';
 
 const img = {};
 let onReady = () => {};

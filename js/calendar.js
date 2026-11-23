@@ -1,8 +1,8 @@
 // calendar.js -- put a saved plan in the phone's calendar. In the native app the system's own
 // event editor opens, filled in (alerts, the spot as a map location; travel time can be set
 // there). In a browser an .ics file is offered, which every calendar app opens.
-import { formatFull } from './tz.js?v=1122.0212-79fa2c9';
-import { SENSORS } from './optics.js?v=1122.0212-79fa2c9';
+import { formatFull } from './tz.js?v=1122.2110-c56454d';
+import { SENSORS } from './optics.js?v=1122.2110-c56454d';
 
 export const SETUP_MIN = 30, AFTER_MIN = 15;       // the event runs from set-up time to a little after the moment
 /** Reminder choices: id -> seconds before the event starts. 'leave' is the OS's travel-time alert. */

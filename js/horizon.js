@@ -1,5 +1,5 @@
 // horizon.js -- skyline of a place and terrain rise/set. No DOM.
-import { buildPano, chainCrests, TAU, PANO_T_MAX } from '../core/terrain.js?v=1122.0212-79fa2c9';
+import { buildPano, chainCrests, TAU, PANO_T_MAX } from '../core/terrain.js?v=1122.2110-c56454d';
 
 // Which interior crests are drawn as ridges. Seen from a valley, every low
 // swell and bench within a couple of km hides the plain behind it and chains

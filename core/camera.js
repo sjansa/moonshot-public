@@ -6,7 +6,7 @@
 // frame WIDTH, so the same camera describes the full video frame and the small
 // analysis frame. Distortion: u_d = u * (1 + k1 * r^2) in focal-length units.
 
-import { D2R } from './terrain.js?v=1122.0212-79fa2c9';
+import { D2R } from './terrain.js?v=1122.2110-c56454d';
 
 export function matMul(a, b) {
   const o = new Array(9);
